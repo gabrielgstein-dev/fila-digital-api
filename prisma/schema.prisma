@@ -1,0 +1,159 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  email     String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  queues  Queue[]
+  agents  Agent[]
+  counters Counter[]
+
+  @@map("tenants")
+}
+
+model Queue {
+  id           String    @id @default(cuid())
+  name         String
+  description  String?
+  queueType    QueueType @default(GENERAL)
+  isActive     Boolean   @default(true)
+  capacity     Int       @default(100)
+  avgServiceTime Int     @default(300) // em segundos
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tickets  Ticket[]
+  callLogs CallLog[]
+
+  @@map("queues")
+}
+
+model Ticket {
+  id           String       @id @default(cuid())
+  number       Int
+  priority     Int          @default(1)
+  status       TicketStatus @default(WAITING)
+  clientName   String?
+  clientPhone  String?
+  clientEmail  String?
+  estimatedTime Int?         // em segundos
+  calledAt     DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  queueId String
+  queue   Queue  @relation(fields: [queueId], references: [id], onDelete: Cascade)
+
+  callLogs CallLog[]
+
+  @@unique([queueId, number])
+  @@map("tickets")
+}
+
+model Agent {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      AgentRole @default(ATTENDANT)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  callLogs CallLog[]
+
+  @@map("agents")
+}
+
+model Counter {
+  id        String   @id @default(cuid())
+  name      String
+  number    Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  callLogs CallLog[]
+
+  @@unique([tenantId, number])
+  @@map("counters")
+}
+
+model CallLog {
+  id          String     @id @default(cuid())
+  action      CallAction
+  calledAt    DateTime   @default(now())
+  serviceTime Int?       // em segundos (quando completado)
+
+  ticketId  String
+  ticket    Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  queueId String
+  queue   Queue  @relation(fields: [queueId], references: [id], onDelete: Cascade)
+
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  counterId String
+  counter   Counter @relation(fields: [counterId], references: [id], onDelete: Cascade)
+
+  @@map("call_logs")
+}
+
+enum QueueType {
+  GENERAL
+  PRIORITY
+  VIP
+}
+
+enum TicketStatus {
+  WAITING
+  CALLED
+  IN_SERVICE
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+enum AgentRole {
+  ATTENDANT
+  ADMIN
+  MANAGER
+}
+
+enum CallAction {
+  CALLED
+  RECALLED
+  SKIPPED
+  COMPLETED
+  NO_SHOW
+}

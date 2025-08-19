@@ -1,0 +1,156 @@
+name: Deploy to Cloud Run - QA
+
+on:
+  push:
+    branches:
+      - develop
+      - qa
+  pull_request:
+    branches:
+      - main
+    types: [closed]
+
+env:
+  NODE_ENV: qa
+  PORT: 8080
+  
+  # Configurações do Banco de Dados PostgreSQL (Render)
+  DATABASE_URL: ${{ secrets.DATABASE_URL_QA }}
+  
+  # Configurações JWT
+  JWT_SECRET: ${{ secrets.JWT_SECRET_QA }}
+  JWT_EXPIRES_IN: 7d
+  
+  # Configurações Redis (se usar Render Redis)
+  REDIS_URL: ${{ secrets.REDIS_URL_QA }}
+  
+  # Configurações CORS
+  CORS_ORIGIN: ${{ secrets.CORS_ORIGIN_QA }}
+  
+  # Configurações WebSocket
+  WEBSOCKET_CORS_ORIGIN: ${{ secrets.WEBSOCKET_CORS_ORIGIN_QA }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+        
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          
+      - name: Verificar versão do Node.js
+        run: |
+          if [[ ! $(node -v) =~ ^v22 ]]; then
+            echo "Erro: Este projeto requer Node.js versão 22.x"
+            echo "Versão atual: $(node -v)"
+            exit 1
+          else
+            echo "Versão do Node.js verificada com sucesso: $(node -v)"
+          fi
+
+      - name: Login no Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_QA }}
+
+      - name: Configurar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: fila-digital-qa
+
+      - name: Configurar Docker para Artifact Registry
+        run: |
+          gcloud auth configure-docker europe-west1-docker.pkg.dev
+
+      - name: Extrair versão do commit
+        id: get_version
+        run: |
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-8)
+          echo "VERSION=qa-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Build e push da imagem Docker
+        run: |
+          docker build -t europe-west1-docker.pkg.dev/fila-digital-qa/fila-api/fila-api-qa:${{ steps.get_version.outputs.VERSION }} \
+            -t europe-west1-docker.pkg.dev/fila-digital-qa/fila-api/fila-api-qa:latest \
+            --file Dockerfile.qa \
+            --build-arg NODE_ENV=${NODE_ENV} \
+            --build-arg PORT=${PORT} \
+            --build-arg DATABASE_URL=${DATABASE_URL} \
+            --build-arg JWT_SECRET=${JWT_SECRET} \
+            --build-arg JWT_EXPIRES_IN=${JWT_EXPIRES_IN} \
+            --build-arg REDIS_URL=${REDIS_URL} \
+            --build-arg CORS_ORIGIN=${CORS_ORIGIN} \
+            --build-arg WEBSOCKET_CORS_ORIGIN=${WEBSOCKET_CORS_ORIGIN} \
+            .
+          docker push europe-west1-docker.pkg.dev/fila-digital-qa/fila-api/fila-api-qa:${{ steps.get_version.outputs.VERSION }}
+          docker push europe-west1-docker.pkg.dev/fila-digital-qa/fila-api/fila-api-qa:latest
+
+      - name: Deploy no Cloud Run QA
+        run: |
+          gcloud run deploy fila-api-qa \
+            --image=europe-west1-docker.pkg.dev/fila-digital-qa/fila-api/fila-api-qa:${{ steps.get_version.outputs.VERSION }} \
+            --platform=managed \
+            --region=europe-west1 \
+            --allow-unauthenticated \
+            --memory=1Gi \
+            --cpu=1 \
+            --concurrency=80 \
+            --max-instances=5 \
+            --timeout=300 \
+            --set-env-vars=NODE_ENV=${NODE_ENV},PORT=${PORT},DATABASE_URL=${DATABASE_URL},JWT_SECRET=${JWT_SECRET},JWT_EXPIRES_IN=${JWT_EXPIRES_IN},REDIS_URL=${REDIS_URL},CORS_ORIGIN=${CORS_ORIGIN},WEBSOCKET_CORS_ORIGIN=${WEBSOCKET_CORS_ORIGIN}
+
+      - name: Executar migrações do Prisma
+        run: |
+          # Instalar pnpm
+          npm install -g pnpm
+          
+          # Instalar dependências
+          pnpm install --frozen-lockfile
+          
+          # Gerar Prisma client
+          npx prisma generate
+          
+          # Executar migrações
+          DATABASE_URL="${{ secrets.DATABASE_URL_QA }}" npx prisma migrate deploy
+
+      - name: Comentar PR com URL de deploy
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **Deploy QA realizado com sucesso!**
+              
+              **🔗 URL:** https://fila-api-qa-[hash].europe-west1.run.app
+              **📦 Versão:** ${{ steps.get_version.outputs.VERSION }}
+              **🌿 Branch:** ${context.ref}
+              **⏰ Deploy:** ${new Date().toLocaleString('pt-BR')}
+              
+              **🧪 Testes disponíveis:**
+              - Swagger: https://fila-api-qa-[hash].europe-west1.run.app/api
+              - Health Check: https://fila-api-qa-[hash].europe-west1.run.app/api/v1
+              `
+            })
+
+      - name: Notificar sucesso
+        if: success()
+        run: |
+          echo "✅ Deploy QA realizado com sucesso!"
+          echo "🔗 URL: https://fila-api-qa-[hash].europe-west1.run.app"
+          echo "📦 Versão: ${{ steps.get_version.outputs.VERSION }}"
+
+      - name: Notificar falha
+        if: failure()
+        run: |
+          echo "❌ Deploy QA falhou!"
+          echo "📋 Verifique os logs acima para mais detalhes" 
