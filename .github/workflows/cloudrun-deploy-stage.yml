@@ -1,0 +1,115 @@
+name: Deploy Backend to Cloud Run (Staging)
+
+on:
+  push:
+    tags:
+      - '*-stage'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to deploy'
+        required: true
+        default: 'latest-stage'
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID_STAGE }}
+  GCP_REGION: ${{ vars.GCP_REGION_STAGE }}
+  SERVICE_NAME: ${{ vars.BACKEND_SERVICE_NAME_STAGE }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract version from tag
+      id: version_check
+      run: |
+        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+          # Extract version from tag
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "Tag detectada: $TAG_NAME"
+          
+          if [[ "$TAG_NAME" == *"-stage" ]]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
+            echo "✅ Deploy será executado para versão: $TAG_NAME"
+          else
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+            echo "❌ Tag não contém '-stage', deploy cancelado"
+          fi
+        elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          # Manual dispatch
+          TAG_NAME="${{ github.event.inputs.tag }}"
+          echo "should_deploy=true" >> $GITHUB_OUTPUT
+          echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Deploy manual para versão: $TAG_NAME"
+        else
+          echo "should_deploy=false" >> $GITHUB_OUTPUT
+          echo "❌ Evento não suportado para deploy"
+        fi
+
+    - name: Setup Google Cloud CLI
+      if: steps.version_check.outputs.should_deploy == 'true'
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY_STAGE }}
+        project_id: ${{ secrets.GCP_PROJECT_ID_STAGE }}
+
+    - name: Configure Docker to use gcloud as a credential helper
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: gcloud auth configure-docker
+
+    - name: Build Docker image
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        VERSION="${{ steps.version_check.outputs.version }}"
+        docker build -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
+
+    - name: Push Docker image
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        VERSION="${{ steps.version_check.outputs.version }}"
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
+
+    - name: Deploy to Cloud Run
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        gcloud run deploy $SERVICE_NAME \
+          --image gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+          --region $GCP_REGION \
+          --platform managed \
+          --allow-unauthenticated \
+          --port 8080 \
+          --memory 1Gi \
+          --cpu 1 \
+          --min-instances 0 \
+          --max-instances 10 \
+          --set-env-vars NODE_ENV=${{ vars.NODE_ENV_STAGE }},DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }},JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }},RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}
+
+    - name: Get service URL
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $GCP_REGION --format="value(status.url)")
+        VERSION="${{ steps.version_check.outputs.version }}"
+        echo "🚀 Backend deployed successfully!"
+        echo "📦 Version: $VERSION"
+        echo "🌐 URL: $SERVICE_URL"
+        echo "📚 API Docs: $SERVICE_URL/api"
+
+    - name: Skip deployment message
+      if: steps.version_check.outputs.should_deploy == 'false'
+      run: |
+        echo "⏭️ Deploy pulado - Tag não é válida para staging"
+        echo "💡 Para fazer deploy, execute um dos comandos:"
+        echo "   pnpm run version:patch  (cria tag X.X.X-stage)"
+        echo "   pnpm run version:minor  (cria tag X.X.X-stage)"
+        echo "   pnpm run version:major  (cria tag X.X.X-stage)"
+        echo ""
+        echo "🏷️ Tags válidas devem terminar com '-stage'"

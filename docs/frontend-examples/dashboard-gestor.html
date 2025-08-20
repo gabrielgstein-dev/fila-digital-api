@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard do Gestor - Fila Digital</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .queues-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+        }
+
+        .queue-card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .queue-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .queue-name {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .current-number {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 10px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .queue-stats {
+            display: flex;
+            justify-content: space-around;
+            padding: 15px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .queue-stat {
+            text-align: center;
+        }
+
+        .queue-stat-number {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .queue-stat-label {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .tickets-list {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .ticket-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .ticket-item.called {
+            border-left-color: #27ae60;
+            background: #d5f4e6;
+        }
+
+        .ticket-info {
+            flex: 1;
+        }
+
+        .ticket-number {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .ticket-client {
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+
+        .ticket-status {
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .status-waiting {
+            background: #f39c12;
+            color: white;
+        }
+
+        .status-called {
+            background: #27ae60;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        .priority-badge {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .priority-1 { background: #3498db; color: white; }
+        .priority-2 { background: #e74c3c; color: white; }
+        .priority-3 { background: #9b59b6; color: white; }
+
+        .empty-queue {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .refresh-button {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 50px;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .refresh-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .last-updated {
+            text-align: center;
+            color: #7f8c8d;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            font-size: 18px;
+            color: #7f8c8d;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 Dashboard do Gestor</h1>
+        <h2>Centro Clínico São Paulo</h2>
+        <p>Visão consolidada de todas as filas em tempo real</p>
+    </div>
+
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        Carregando dados...
+    </div>
+
+    <div id="dashboard" style="display: none;">
+        <!-- Estatísticas Consolidadas -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="total-queues">0</div>
+                <div class="stat-label">Filas Ativas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="total-waiting">0</div>
+                <div class="stat-label">Aguardando</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="total-called">0</div>
+                <div class="stat-label">Chamados</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="total-completed">0</div>
+                <div class="stat-label">Atendidos Hoje</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="avg-wait-time">0 min</div>
+                <div class="stat-label">Tempo Médio</div>
+            </div>
+        </div>
+
+        <!-- Grid de Filas -->
+        <div class="queues-grid" id="queues-grid">
+            <!-- Filas serão preenchidas dinamicamente -->
+        </div>
+
+        <div class="last-updated">
+            Última atualização: <span id="last-updated">--</span>
+        </div>
+    </div>
+
+    <button class="refresh-button" onclick="loadDashboard()">
+        🔄 Atualizar
+    </button>
+
+    <script>
+        let socket = null;
+        const authToken = 'SEU_TOKEN_JWT_AQUI';
+        const tenantId = 'SEU_TENANT_ID_AQUI';
+        const API_BASE = 'http://localhost:3001/api/v1';
+
+        // Carregar dashboard ao iniciar
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDashboard();
+            connectWebSocket();
+            
+            // Atualizar automaticamente a cada 30 segundos
+            setInterval(loadDashboard, 30000);
+        });
+
+        async function loadDashboard() {
+            try {
+                showLoading(true);
+                
+                const response = await fetch(`${API_BASE}/tenants/${tenantId}/queues/all-tickets`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Erro ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                updateDashboard(data);
+                
+                showLoading(false);
+                
+            } catch (error) {
+                console.error('Erro ao carregar dashboard:', error);
+                showError(error.message);
+                showLoading(false);
+            }
+        }
+
+        function updateDashboard(data) {
+            // Atualizar estatísticas consolidadas
+            document.getElementById('total-queues').textContent = data.summary.totalQueues;
+            document.getElementById('total-waiting').textContent = data.summary.totalWaiting;
+            document.getElementById('total-called').textContent = data.summary.totalCalled;
+            document.getElementById('total-completed').textContent = data.summary.totalCompleted;
+            document.getElementById('avg-wait-time').textContent = formatTime(data.summary.avgWaitTime);
+            document.getElementById('last-updated').textContent = formatDateTime(data.summary.lastUpdated);
+
+            // Atualizar filas
+            const queuesGrid = document.getElementById('queues-grid');
+            queuesGrid.innerHTML = '';
+
+            data.queues.forEach(queue => {
+                const queueCard = createQueueCard(queue);
+                queuesGrid.appendChild(queueCard);
+            });
+        }
+
+        function createQueueCard(queue) {
+            const card = document.createElement('div');
+            card.className = 'queue-card';
+            card.innerHTML = `
+                <div class="queue-header">
+                    <div class="queue-name">${getQueueIcon(queue.name)} ${queue.name}</div>
+                    <div class="current-number">
+                        ${queue.currentNumber > 0 ? queue.currentNumber.toString().padStart(2, '0') : '--'}
+                    </div>
+                    <div class="queue-stats">
+                        <div class="queue-stat">
+                            <div class="queue-stat-number">${queue.totalWaiting}</div>
+                            <div class="queue-stat-label">Aguardando</div>
+                        </div>
+                        <div class="queue-stat">
+                            <div class="queue-stat-number">${queue.totalCalled}</div>
+                            <div class="queue-stat-label">Chamados</div>
+                        </div>
+                        <div class="queue-stat">
+                            <div class="queue-stat-number">${queue.capacity}</div>
+                            <div class="queue-stat-label">Capacidade</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tickets-list" id="tickets-${queue.id}">
+                    ${createTicketsList(queue.tickets)}
+                </div>
+            `;
+            return card;
+        }
+
+        function createTicketsList(tickets) {
+            if (tickets.length === 0) {
+                return '<div class="empty-queue">Nenhum cliente na fila</div>';
+            }
+
+            return tickets.map(ticket => `
+                <div class="ticket-item ${ticket.status.toLowerCase()}">
+                    <div class="ticket-info">
+                        <div class="ticket-number">
+                            Nº ${ticket.number.toString().padStart(2, '0')}
+                            ${getPriorityBadge(ticket.priority)}
+                        </div>
+                        <div class="ticket-client">
+                            ${ticket.clientName}
+                            ${ticket.status === 'WAITING' ? `(${ticket.position}º na fila)` : ''}
+                        </div>
+                    </div>
+                    <div class="ticket-status status-${ticket.status.toLowerCase()}">
+                        ${getStatusText(ticket.status)}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getPriorityBadge(priority) {
+            const badges = {
+                1: '<span class="priority-badge priority-1">Normal</span>',
+                2: '<span class="priority-badge priority-2">Prioritário</span>',
+                3: '<span class="priority-badge priority-3">VIP</span>'
+            };
+            return badges[priority] || '';
+        }
+
+        function getStatusText(status) {
+            const statusMap = {
+                'WAITING': 'Aguardando',
+                'CALLED': 'Chamado',
+                'COMPLETED': 'Concluído'
+            };
+            return statusMap[status] || status;
+        }
+
+        function getQueueIcon(queueName) {
+            const icons = {
+                'Endocrinologia': '🩺',
+                'Pediatria': '👶',
+                'Raio-X': '📷',
+                'Oftalmologia': '👁️',
+                'Cardiologia': '❤️',
+                'Neurologia': '🧠',
+                'Dermatologia': '🩹'
+            };
+            return icons[queueName] || '🏥';
+        }
+
+        function formatTime(seconds) {
+            if (!seconds || seconds === 0) return '0 min';
+            const minutes = Math.round(seconds / 60);
+            if (minutes < 60) return `${minutes} min`;
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            return `${hours}h${remainingMinutes > 0 ? remainingMinutes + 'min' : ''}`;
+        }
+
+        function formatDateTime(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'flex' : 'none';
+            document.getElementById('dashboard').style.display = show ? 'none' : 'block';
+        }
+
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #e74c3c;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 10px;
+                z-index: 1000;
+                max-width: 300px;
+            `;
+            errorDiv.textContent = `Erro: ${message}`;
+            document.body.appendChild(errorDiv);
+
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
+        }
+
+        function connectWebSocket() {
+            socket = io('http://localhost:3001');
+
+            socket.on('connect', () => {
+                console.log('WebSocket conectado ao dashboard');
+            });
+
+            socket.on('queue-update', (data) => {
+                console.log('Atualização da fila recebida:', data);
+                // Recarregar dashboard quando houver atualizações
+                loadDashboard();
+            });
+
+            socket.on('ticket-called', (data) => {
+                console.log('Ticket chamado:', data);
+                // Recarregar dashboard para refletir mudanças
+                loadDashboard();
+            });
+
+            socket.on('disconnect', () => {
+                console.log('WebSocket desconectado');
+            });
+        }
+
+        // Exemplo de configuração para ambiente real
+        // Substitua pelas suas credenciais reais:
+        /*
+        const authToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+        const tenantId = 'clp1234567890abcdef123456';
+        */
+    </script>
+</body>
+</html>

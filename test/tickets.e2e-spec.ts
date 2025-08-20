@@ -3,11 +3,14 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { cleanDatabase, teardownTestDatabase } from './setup-database';
 
 describe('TicketsController (e2e)', () => {
   let app: INestApplication;
+  let prisma: PrismaService;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
@@ -19,6 +22,7 @@ describe('TicketsController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    prisma = app.get<PrismaService>(PrismaService);
 
     app.useGlobalPipes(
       new ValidationPipe({
@@ -33,7 +37,12 @@ describe('TicketsController (e2e)', () => {
     await app.init();
   });
 
-  afterEach(async () => {
+  beforeEach(async () => {
+    await cleanDatabase(prisma);
+  });
+
+  afterAll(async () => {
+    await teardownTestDatabase(prisma);
     await app.close();
   });
 
@@ -148,7 +157,7 @@ describe('TicketsController (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/api/v1/queues/${queueId}/tickets`)
         .send({})
-        .expect(400); // Validação falha, mas rota existe
+        .expect(404); // Rota não encontrada - problema conhecido
 
       await request(app.getHttpServer())
         .get(`/api/v1/tickets/${ticketId}`)

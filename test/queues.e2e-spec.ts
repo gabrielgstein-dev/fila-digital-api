@@ -3,12 +3,13 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { PrismaClient } from '@prisma/client';
+import { PrismaService } from '../src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import { cleanDatabase, teardownTestDatabase } from './setup-database';
 
 describe('QueuesController (e2e)', () => {
   let app: INestApplication;
-  let prisma: PrismaClient;
+  let prisma: PrismaService;
   let tenant: any;
   let agent: any;
   let authToken: string;
@@ -25,7 +26,7 @@ describe('QueuesController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    prisma = new PrismaClient();
+    prisma = app.get<PrismaService>(PrismaService);
 
     app.useGlobalPipes(
       new ValidationPipe({
@@ -41,19 +42,19 @@ describe('QueuesController (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await cleanDatabase();
+    await cleanDatabase(prisma);
 
     tenant = await prisma.tenant.create({
       data: {
         name: 'Empresa Teste',
-        slug: 'empresa-teste',
+        slug: `empresa-teste-${Date.now()}`,
         email: 'contato@empresa.com',
       },
     });
 
     agent = await prisma.agent.create({
       data: {
-        email: 'admin@empresa.com',
+        email: `admin-${Date.now()}@empresa.com`,
         name: 'Admin Teste',
         password: await bcrypt.hash('senha123', 10),
         role: 'ADMIN',
@@ -64,7 +65,7 @@ describe('QueuesController (e2e)', () => {
     const loginResponse = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({
-        email: 'admin@empresa.com',
+        email: agent.email,
         password: 'senha123',
       });
 
@@ -72,23 +73,9 @@ describe('QueuesController (e2e)', () => {
   });
 
   afterAll(async () => {
-    await cleanDatabase();
-    await prisma.$disconnect();
+    await teardownTestDatabase(prisma);
     await app.close();
   });
-
-  async function cleanDatabase() {
-    try {
-      await prisma.callLog.deleteMany();
-      await prisma.ticket.deleteMany();
-      await prisma.queue.deleteMany();
-      await prisma.counter.deleteMany();
-      await prisma.agent.deleteMany();
-      await prisma.tenant.deleteMany();
-    } catch (error) {
-      console.log('Erro ao limpar banco:', error);
-    }
-  }
 
   describe('/tenants/:tenantId/queues (GET)', () => {
     it('deve listar filas do tenant', async () => {
@@ -216,7 +203,7 @@ describe('QueuesController (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post(`/api/v1/tenants/${tenant.id}/queues/${queue.id}/call-next`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .expect(201);
 
       expect(response.body.id).toBe(ticket.id);
       expect(response.body.status).toBe('CALLED');

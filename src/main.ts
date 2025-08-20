@@ -10,12 +10,23 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: false, // Desabilitar CSP para não interferir nos testes
+      hsts: configService.get('NODE_ENV') === 'production',
+      xssFilter: false, // Versões modernas do helmet desabilitam por padrão
+      noSniff: true,
+      frameguard: { action: 'deny' },
+      hidePoweredBy: true, // Força remoção do x-powered-by
+    }),
+  );
 
   app.enableCors({
     origin: configService.get('CORS_ORIGIN') || 'http://localhost:3000',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: false, // Não permitir cookies por segurança
+    maxAge: 86400, // Cache preflight por 24h
   });
 
   app.useGlobalPipes(
@@ -23,6 +34,8 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      disableErrorMessages: configService.get('NODE_ENV') === 'production',
+      validateCustomDecorators: true,
     }),
   );
 

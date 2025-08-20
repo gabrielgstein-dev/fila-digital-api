@@ -45,6 +45,34 @@ export class EventsGateway {
     this.logger.log(`Cliente ${client.id} saiu da fila ${data.queueId}`);
   }
 
+  @SubscribeMessage('join-client')
+  handleJoinClient(
+    @MessageBody() data: { phone?: string; email?: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const identifier = data.phone || data.email;
+    if (identifier) {
+      client.join(`client-${identifier}`);
+      this.logger.log(
+        `Cliente ${client.id} conectou com identificador ${identifier}`,
+      );
+    }
+  }
+
+  @SubscribeMessage('leave-client')
+  handleLeaveClient(
+    @MessageBody() data: { phone?: string; email?: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const identifier = data.phone || data.email;
+    if (identifier) {
+      client.leave(`client-${identifier}`);
+      this.logger.log(
+        `Cliente ${client.id} desconectou do identificador ${identifier}`,
+      );
+    }
+  }
+
   emitQueueUpdate(queueId: string, data: any) {
     this.server.to(`queue-${queueId}`).emit('queue-updated', data);
   }
@@ -55,5 +83,13 @@ export class EventsGateway {
 
   emitCallMade(queueId: string, data: any) {
     this.server.to(`queue-${queueId}`).emit('call-made', data);
+  }
+
+  emitClientUpdate(clientIdentifier: string, data: any) {
+    this.server.to(`client-${clientIdentifier}`).emit('client-update', data);
+  }
+
+  emitClientTicketCalled(clientIdentifier: string, data: any) {
+    this.server.to(`client-${clientIdentifier}`).emit('ticket-called', data);
   }
 }

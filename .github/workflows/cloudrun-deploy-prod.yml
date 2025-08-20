@@ -1,0 +1,119 @@
+name: Deploy Backend to Cloud Run (Production)
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'  # Apenas tags sem sufixo (ex: 1.2.3)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Production tag to deploy (without -stage suffix)'
+        required: true
+        default: '1.0.0'
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID_PROD }}
+  GCP_REGION: ${{ vars.GCP_REGION_PROD }}
+  SERVICE_NAME: ${{ vars.BACKEND_SERVICE_NAME_PROD }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production  # Requer aprovação/permissão
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract version from tag
+      id: version_check
+      run: |
+        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+          # Extract version from tag
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "Tag detectada: $TAG_NAME"
+          
+          # Validar que NÃO contém -stage e segue formato X.Y.Z
+          if [[ "$TAG_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
+            echo "✅ Deploy de PRODUÇÃO será executado para versão: $TAG_NAME"
+          else
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+            echo "❌ Tag não é válida para produção (deve ser X.Y.Z sem sufixo)"
+          fi
+        elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          # Manual dispatch
+          TAG_NAME="${{ github.event.inputs.tag }}"
+          echo "should_deploy=true" >> $GITHUB_OUTPUT
+          echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Deploy manual de PRODUÇÃO para versão: $TAG_NAME"
+        else
+          echo "should_deploy=false" >> $GITHUB_OUTPUT
+          echo "❌ Evento não suportado para deploy de produção"
+        fi
+
+    - name: Setup Google Cloud CLI
+      if: steps.version_check.outputs.should_deploy == 'true'
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY_PROD }}
+        project_id: ${{ secrets.GCP_PROJECT_ID_PROD }}
+
+    - name: Configure Docker to use gcloud as a credential helper
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: gcloud auth configure-docker
+
+    - name: Build Docker image
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        VERSION="${{ steps.version_check.outputs.version }}"
+        docker build -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
+
+    - name: Push Docker image
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        VERSION="${{ steps.version_check.outputs.version }}"
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
+
+    - name: Deploy to Cloud Run
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        gcloud run deploy $SERVICE_NAME \
+          --image gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+          --region $GCP_REGION \
+          --platform managed \
+          --allow-unauthenticated \
+          --port 8080 \
+          --memory 2Gi \
+          --cpu 2 \
+          --min-instances 1 \
+          --max-instances 50 \
+          --set-env-vars NODE_ENV=production,ENVIRONMENT=production \
+          --update-secrets DATABASE_URL=DATABASE_URL_PROD:latest,JWT_SECRET=JWT_SECRET_PROD:latest,RABBITMQ_URL=RABBITMQ_URL_PROD:latest
+
+    - name: Get service URL
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $GCP_REGION --format="value(status.url)")
+        VERSION="${{ steps.version_check.outputs.version }}"
+        echo "🚀 Backend PRODUÇÃO deployed successfully!"
+        echo "📦 Version: $VERSION"
+        echo "🌐 URL: $SERVICE_URL"
+        echo "📚 API Docs: $SERVICE_URL/api"
+
+    - name: Skip deployment message
+      if: steps.version_check.outputs.should_deploy == 'false'
+      run: |
+        echo "⏭️ Deploy pulado - Tag não é válida para produção"
+        echo "💡 Para deploy de produção, use:"
+        echo "   pnpm run version:prod-patch  (cria tag X.X.X)"
+        echo "   pnpm run version:prod-minor  (cria tag X.X.X)"
+        echo "   pnpm run version:prod-major  (cria tag X.X.X)"
+        echo ""
+        echo "🏷️ Tags de produção devem seguir formato X.Y.Z (sem sufixo)"
+        echo "🔒 Ambiente de produção requer permissões especiais"

@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fila Digital - Cliente</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            font-size: 24px;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .queue-selector {
+            margin-bottom: 30px;
+        }
+
+        .queue-btn {
+            width: 100%;
+            padding: 20px;
+            margin: 10px 0;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .queue-btn:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
+        }
+
+        .wait-time {
+            background: rgba(255,255,255,0.2);
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+        }
+
+        .ticket-display {
+            text-align: center;
+            display: none;
+        }
+
+        .ticket-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+        }
+
+        .ticket-number {
+            font-size: 72px;
+            font-weight: bold;
+            margin: 20px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .queue-info p {
+            margin: 10px 0;
+            font-size: 18px;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+
+        .status.waiting {
+            background: #f39c12;
+            color: white;
+        }
+
+        .status.called {
+            background: #27ae60;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .notifications {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .notification {
+            background: #2ecc71;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            animation: slideIn 0.5s ease;
+            max-width: 300px;
+        }
+
+        .notification.warning {
+            background: #f39c12;
+        }
+
+        .notification.error {
+            background: #e74c3c;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            background: #5a6fd8;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🎫 Fila Digital</div>
+            <h2>Centro Clínico São Paulo</h2>
+        </div>
+
+        <!-- Seleção de Fila -->
+        <div id="queue-selector" class="queue-selector">
+            <h3>Escolha sua especialidade:</h3>
+            <button class="queue-btn" onclick="showClientForm('clq1234567890abcdef123456', 'Endocrinologia')">
+                🩺 Endocrinologia
+                <span class="wait-time">~45 min</span>
+            </button>
+            <button class="queue-btn" onclick="showClientForm('clq2234567890abcdef123456', 'Pediatria')">
+                👶 Pediatria
+                <span class="wait-time">~20 min</span>
+            </button>
+            <button class="queue-btn" onclick="showClientForm('clq3234567890abcdef123456', 'Raio-X')">
+                📷 Raio-X
+                <span class="wait-time">~5 min</span>
+            </button>
+            <button class="queue-btn" onclick="showClientForm('clq4234567890abcdef123456', 'Oftalmologia')">
+                👁️ Oftalmologia
+                <span class="wait-time">~30 min</span>
+            </button>
+        </div>
+
+        <!-- Formulário do Cliente -->
+        <div id="client-form" class="hidden">
+            <h3>Dados para a senha</h3>
+            <form onsubmit="joinQueue(event)">
+                <div class="form-group">
+                    <label for="clientName">Nome completo:</label>
+                    <input type="text" id="clientName" required>
+                </div>
+                <div class="form-group">
+                    <label for="clientPhone">Telefone:</label>
+                    <input type="tel" id="clientPhone" required>
+                </div>
+                <div class="form-group">
+                    <label for="clientEmail">Email (opcional):</label>
+                    <input type="email" id="clientEmail">
+                </div>
+                <button type="submit" class="btn-primary">🎟️ Retirar Senha</button>
+                <button type="button" class="btn-secondary" onclick="backToQueues()">Voltar</button>
+            </form>
+        </div>
+
+        <!-- Display do Ticket -->
+        <div id="ticket-display" class="ticket-display hidden">
+            <div class="ticket-card">
+                <h2>Sua Senha</h2>
+                <div class="ticket-number" id="ticket-number">04</div>
+                <div class="queue-info">
+                    <p><strong id="queue-name">Endocrinologia</strong></p>
+                    <p>Posição: <span id="position">3º</span></p>
+                    <p>Tempo estimado: <span id="estimated-time">45 min</span></p>
+                </div>
+            </div>
+            <div class="status waiting" id="status">⏳ Aguardando atendimento...</div>
+            <button class="btn-secondary" onclick="backToQueues()">Nova Senha</button>
+        </div>
+    </div>
+
+    <!-- Notificações -->
+    <div id="notifications" class="notifications"></div>
+
+    <script>
+        let socket = null;
+        let currentTicket = null;
+        let selectedQueue = null;
+
+        const API_BASE = 'http://localhost:3001/api/v1';
+
+        function showClientForm(queueId, queueName) {
+            selectedQueue = { id: queueId, name: queueName };
+            document.getElementById('queue-selector').classList.add('hidden');
+            document.getElementById('client-form').classList.remove('hidden');
+        }
+
+        function backToQueues() {
+            document.getElementById('client-form').classList.add('hidden');
+            document.getElementById('ticket-display').classList.add('hidden');
+            document.getElementById('queue-selector').classList.remove('hidden');
+            
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+            
+            currentTicket = null;
+            selectedQueue = null;
+        }
+
+        async function joinQueue(event) {
+            event.preventDefault();
+            
+            const clientName = document.getElementById('clientName').value;
+            const clientPhone = document.getElementById('clientPhone').value;
+            const clientEmail = document.getElementById('clientEmail').value;
+            
+            try {
+                showNotification('Gerando sua senha...', 'info');
+                
+                const response = await fetch(`${API_BASE}/queues/${selectedQueue.id}/tickets`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        clientName,
+                        clientPhone,
+                        clientEmail: clientEmail || undefined,
+                        priority: 1
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Erro ao gerar senha');
+                }
+
+                const ticket = await response.json();
+                currentTicket = ticket;
+                
+                showTicket(ticket);
+                connectWebSocket(ticket.id);
+                
+                showNotification('Senha gerada com sucesso!', 'success');
+                
+            } catch (error) {
+                showNotification('Erro ao gerar senha: ' + error.message, 'error');
+            }
+        }
+
+        function showTicket(ticket) {
+            document.getElementById('client-form').classList.add('hidden');
+            document.getElementById('ticket-display').classList.remove('hidden');
+            
+            document.getElementById('ticket-number').textContent = 
+                ticket.number.toString().padStart(2, '0');
+            document.getElementById('queue-name').textContent = selectedQueue.name;
+            document.getElementById('position').textContent = ticket.position || '...';
+            document.getElementById('estimated-time').textContent = 
+                formatTime(ticket.estimatedTime || 0);
+        }
+
+        function connectWebSocket(ticketId) {
+            socket = io('http://localhost:3001', {
+                query: { ticketId: ticketId }
+            });
+
+            socket.on('connect', () => {
+                console.log('WebSocket conectado');
+                showNotification('Conectado! Você receberá atualizações em tempo real.', 'success');
+            });
+
+            socket.on('queue-update', (data) => {
+                console.log('Atualização da fila:', data);
+                updateTicketInfo(data);
+            });
+
+            socket.on('ticket-called', (data) => {
+                console.log('Ticket chamado!', data);
+                showCalledNotification();
+                playNotificationSound();
+            });
+
+            socket.on('ticket-recalled', (data) => {
+                console.log('Ticket rechamado!', data);
+                showNotification('📢 SEGUNDA CHAMADA - Dirija-se ao atendimento!', 'warning');
+                playNotificationSound();
+            });
+
+            socket.on('disconnect', () => {
+                console.log('WebSocket desconectado');
+                showNotification('Conexão perdida. Tentando reconectar...', 'warning');
+            });
+        }
+
+        function updateTicketInfo(data) {
+            if (data.position !== undefined) {
+                document.getElementById('position').textContent = 
+                    data.position === 0 ? 'Sua vez!' : data.position + 'º';
+            }
+            
+            if (data.estimatedTime !== undefined) {
+                document.getElementById('estimated-time').textContent = 
+                    formatTime(data.estimatedTime);
+            }
+            
+            showNotification(`Posição atualizada: ${data.position}º na fila`, 'info');
+        }
+
+        function showCalledNotification() {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = '🔔 SEU NÚMERO FOI CHAMADO!';
+            statusElement.className = 'status called';
+            
+            document.getElementById('position').textContent = 'Sua vez!';
+            document.getElementById('estimated-time').textContent = 'Agora';
+            
+            showNotification('🔔 SEU NÚMERO FOI CHAMADO! Dirija-se ao atendimento.', 'success');
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            
+            document.getElementById('notifications').appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+
+        function playNotificationSound() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.1);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 1);
+            } catch (error) {
+                console.log('Não foi possível tocar o som:', error);
+            }
+        }
+
+        function formatTime(seconds) {
+            if (seconds < 60) return '< 1 min';
+            const minutes = Math.round(seconds / 60);
+            if (minutes < 60) return `${minutes} min`;
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            return `${hours}h${remainingMinutes > 0 ? remainingMinutes + 'min' : ''}`;
+        }
+
+        // Atualizar tempos estimados das filas periodicamente
+        async function updateQueueTimes() {
+            try {
+                // Aqui você faria chamadas para a API para obter tempos atualizados
+                // const response = await fetch(`${API_BASE}/tenants/TENANT_ID/queues`);
+                // const queues = await response.json();
+                // Atualizar os tempos na interface
+            } catch (error) {
+                console.log('Erro ao atualizar tempos das filas:', error);
+            }
+        }
+
+        // Atualizar a cada 30 segundos
+        setInterval(updateQueueTimes, 30000);
+
+        // Prevenção de perda de conexão
+        window.addEventListener('beforeunload', () => {
+            if (socket) {
+                socket.disconnect();
+            }
+        });
+    </script>
+</body>
+</html>

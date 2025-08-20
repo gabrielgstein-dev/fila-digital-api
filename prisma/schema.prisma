@@ -67,6 +67,10 @@ model Ticket {
   queueId String
   queue   Queue  @relation(fields: [queueId], references: [id], onDelete: Cascade)
 
+  // Relação opcional com usuário logado (Google)
+  userId String?
+  user   User?   @relation("UserTickets", fields: [userId], references: [id], onDelete: SetNull)
+
   callLogs CallLog[]
 
   @@unique([queueId, number])
@@ -77,7 +81,8 @@ model Agent {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String
-  password  String
+  password  String?  // Opcional para login com Google
+  googleId  String?  @unique // Para login com Google
   role      AgentRole @default(ATTENDANT)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -89,6 +94,23 @@ model Agent {
   callLogs CallLog[]
 
   @@map("agents")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  googleId     String   @unique
+  picture      String?  // URL da foto do Google
+  phone        String?  // Pode ser preenchido depois
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Histórico de tickets (para facilitar busca)
+  ticketHistory Ticket[] @relation("UserTickets")
+
+  @@map("users")
 }
 
 model Counter {
@@ -156,4 +178,75 @@ enum CallAction {
   SKIPPED
   COMPLETED
   NO_SHOW
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?    // Dados extras (queueId, ticketNumber, etc)
+  
+  // Destinatário
+  userId    String?  // Para usuários logados
+  clientPhone String? // Para clientes sem login
+  clientEmail String? // Para clientes sem login
+  
+  // Status de entrega
+  status    NotificationStatus @default(PENDING)
+  sentAt    DateTime?
+  readAt    DateTime?
+  
+  // Canais de entrega
+  channels  NotificationChannel[] // WebSocket, Push, SMS, Email
+  
+  // Retry
+  attempts  Int      @default(0)
+  maxAttempts Int    @default(3)
+  nextRetry DateTime?
+  
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime? // TTL para notificações
+  
+  @@map("notifications")
+}
+
+model NotificationChannel {
+  id             String @id @default(cuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  
+  channel        String // 'websocket', 'push', 'sms', 'email'
+  status         DeliveryStatus @default(PENDING)
+  sentAt         DateTime?
+  errorMessage   String?
+  attempts       Int @default(0)
+  
+  @@map("notification_channels")
+}
+
+enum NotificationType {
+  TICKET_CALLED      // Sua senha foi chamada
+  TICKET_UPDATED     // Posição na fila mudou
+  QUEUE_STATUS       // Fila pausada/retomada
+  APPOINTMENT_REMINDER // Lembrete (futuro)
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  EXPIRED
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  EXPIRED
 }

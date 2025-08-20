@@ -18,11 +18,11 @@ import { CreateTicketDto } from '../common/dto/create-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('tickets')
-@Controller('queues/:queueId/tickets')
+@Controller()
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
 
-  @Post()
+  @Post('queues/:queueId/tickets')
   @ApiOperation({ summary: 'Criar novo ticket (tirar senha)' })
   @ApiResponse({ status: 201, description: 'Ticket criado com sucesso' })
   async create(
@@ -32,14 +32,14 @@ export class TicketsController {
     return this.ticketsService.create(queueId, createTicketDto);
   }
 
-  @Get(':id')
+  @Get('tickets/:id')
   @ApiOperation({ summary: 'Buscar ticket por ID' })
   @ApiResponse({ status: 200, description: 'Dados do ticket' })
   async findOne(@Param('id') id: string) {
     return this.ticketsService.findOne(id);
   }
 
-  @Put(':id/recall')
+  @Put('tickets/:id/recall')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Rechamar ticket' })
@@ -48,7 +48,7 @@ export class TicketsController {
     return this.ticketsService.recall(id);
   }
 
-  @Put(':id/skip')
+  @Put('tickets/:id/skip')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Pular ticket' })
@@ -57,7 +57,7 @@ export class TicketsController {
     return this.ticketsService.skip(id);
   }
 
-  @Put(':id/complete')
+  @Put('tickets/:id/complete')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Completar atendimento' })

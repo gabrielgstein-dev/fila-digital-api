@@ -1,0 +1,64 @@
+# Docker Compose para desenvolvimento local
+version: '3.8'
+
+services:
+  # RabbitMQ para mensageria
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: fila-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_DEFAULT_VHOST: /
+    ports:
+      - '5672:5672' # AMQP port
+      - '15672:15672' # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    networks:
+      - fila-network
+
+  # Redis para cache (opcional)
+  redis:
+    image: redis:7-alpine
+    container_name: fila-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - fila-network
+
+  # PostgreSQL (se quiser local ao invés do Render)
+  postgres:
+    image: postgres:15
+    container_name: fila-postgres
+    environment:
+      POSTGRES_DB: fila_digital
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fila-network
+
+volumes:
+  rabbitmq_data:
+  redis_data:
+  postgres_data:
+
+networks:
+  fila-network:
+    driver: bridge
+# Para usar:
+# 1. docker-compose -f docker-compose.dev.yml up -d
+# 2. Acessar RabbitMQ Management: http://localhost:15672 (admin/admin123)
+# 3. Configurar .env: RABBITMQ_URL=amqp://admin:admin123@localhost:5672

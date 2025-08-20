@@ -4,7 +4,10 @@ import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { TenantAuthGuard } from './guards/tenant-auth.guard';
+import { AuthThrottleGuard } from './guards/auth-throttle.guard';
 
 @Module({
   imports: [
@@ -20,7 +23,14 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard],
-  exports: [AuthService, JwtAuthGuard],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    GoogleStrategy,
+    JwtAuthGuard,
+    TenantAuthGuard,
+    AuthThrottleGuard,
+  ],
+  exports: [AuthService, JwtAuthGuard, TenantAuthGuard, AuthThrottleGuard],
 })
 export class AuthModule {}

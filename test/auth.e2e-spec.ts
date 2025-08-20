@@ -5,6 +5,7 @@ import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import { cleanDatabase, teardownTestDatabase } from './setup-database';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -40,19 +41,19 @@ describe('AuthController (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await cleanDatabase();
+    await cleanDatabase(prisma);
 
     tenant = await prisma.tenant.create({
       data: {
         name: 'Empresa Teste',
-        slug: 'empresa-teste',
+        slug: `empresa-teste-${Date.now()}`,
         email: 'contato@empresa.com',
       },
     });
 
     agent = await prisma.agent.create({
       data: {
-        email: 'admin@empresa.com',
+        email: `admin-${Date.now()}@empresa.com`,
         name: 'Admin Teste',
         password: await bcrypt.hash('senha123', 10),
         role: 'ADMIN',
@@ -62,44 +63,23 @@ describe('AuthController (e2e)', () => {
   });
 
   afterAll(async () => {
-    await cleanDatabase();
-    await prisma.$disconnect();
+    await teardownTestDatabase(prisma);
     await app.close();
   });
-
-  async function cleanDatabase() {
-    const tablenames = await prisma.$queryRaw<
-      Array<{ tablename: string }>
-    >`SELECT tablename FROM pg_tables WHERE schemaname='public'`;
-
-    const tables = tablenames
-      .map(({ tablename }) => tablename)
-      .filter((name) => name !== '_prisma_migrations')
-      .map((name) => `"public"."${name}"`)
-      .join(', ');
-
-    try {
-      if (tables) {
-        await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tables} CASCADE;`);
-      }
-    } catch (error) {
-      console.log('Erro ao limpar banco:', error);
-    }
-  }
 
   describe('/auth/login (POST)', () => {
     it('deve fazer login com credenciais válidas', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/login')
         .send({
-          email: 'admin@empresa.com',
+          email: agent.email,
           password: 'senha123',
         })
         .expect(200);
 
       expect(response.body).toHaveProperty('access_token');
       expect(response.body).toHaveProperty('user');
-      expect(response.body.user.email).toBe('admin@empresa.com');
+      expect(response.body.user.email).toBe(agent.email);
       expect(response.body.user.role).toBe('ADMIN');
       expect(response.body.user).not.toHaveProperty('password');
     });
@@ -118,7 +98,7 @@ describe('AuthController (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/auth/login')
         .send({
-          email: 'admin@empresa.com',
+          email: agent.email,
           password: 'senhaerrada',
         })
         .expect(401);
@@ -143,7 +123,7 @@ describe('AuthController (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/auth/login')
         .send({
-          email: 'admin@empresa.com',
+          email: agent.email,
           password: 'senha123',
         })
         .expect(401);
