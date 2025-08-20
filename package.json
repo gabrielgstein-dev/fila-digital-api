@@ -31,11 +31,11 @@
     "version:minor": "pnpm version minor --no-git-tag-version && pnpm run version:stage && pnpm run version:deploy",
     "version:major": "pnpm version major --no-git-tag-version && pnpm run version:stage && pnpm run version:deploy",
     "version:stage": "node -e \"const pkg = require('./package.json'); const [major, minor, patch] = pkg.version.split('.'); pkg.version = major + '.' + minor + '.' + patch + '-stage'; require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\\n');\"",
-    "version:deploy": "git add package.json && git commit -m \"chore: bump version to $(node -p 'require(\\\"./package.json\\\").version')\" && git tag \"$(node -p 'require(\\\"./package.json\\\").version')\" && git push origin main && git push origin \"$(node -p 'require(\\\"./package.json\\\").version')\"",
+    "version:deploy": "node -e \"const pkg = require('./package.json'); const version = pkg.version; require('child_process').execSync('git add package.json', {stdio: 'inherit'}); require('child_process').execSync('git commit -m \\\"chore: bump version to ' + version + '\\\"', {stdio: 'inherit'}); require('child_process').execSync('git tag ' + version, {stdio: 'inherit'}); require('child_process').execSync('git push origin main', {stdio: 'inherit'}); require('child_process').execSync('git push origin ' + version, {stdio: 'inherit'});\"",
     "version:prod-patch": "pnpm version patch --no-git-tag-version && pnpm run version:prod-deploy",
     "version:prod-minor": "pnpm version minor --no-git-tag-version && pnpm run version:prod-deploy",
     "version:prod-major": "pnpm version major --no-git-tag-version && pnpm run version:prod-deploy",
-    "version:prod-deploy": "git add package.json && git commit -m \"chore: release version $(node -p 'require(\\\"./package.json\\\").version')\" && git tag \"$(node -p 'require(\\\"./package.json\\\").version')\" && git push origin main && git push origin \"$(node -p 'require(\\\"./package.json\\\").version')\""
+    "version:prod-deploy": "node -e \"const pkg = require('./package.json'); const version = pkg.version; require('child_process').execSync('git add package.json', {stdio: 'inherit'}); require('child_process').execSync('git commit -m \\\"chore: release version ' + version + '\\\"', {stdio: 'inherit'}); require('child_process').execSync('git tag ' + version, {stdio: 'inherit'}); require('child_process').execSync('git push origin main', {stdio: 'inherit'}); require('child_process').execSync('git push origin ' + version, {stdio: 'inherit'});\""
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
