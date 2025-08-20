@@ -1,0 +1,792 @@
+{
+  "info": {
+    "name": "Fila Digital API",
+    "description": "Coleção completa para testar a API do Sistema de Fila Digital",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tenantId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "queueId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ticketId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🏢 1. Setup - Criar Empresa",
+      "item": [
+        {
+          "name": "Criar Tenant (Centro Clínico)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Centro Clínico São Paulo\",\n  \"slug\": \"centro-clinico-sp\",\n  \"email\": \"contato@centroclinico.com.br\",\n  \"phone\": \"(11) 3333-4444\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const tenant = pm.response.json();",
+                  "    pm.collectionVariables.set('tenantId', tenant.id);",
+                  "    pm.test('Tenant criado com sucesso', function () {",
+                  "        pm.expect(tenant.name).to.eql('Centro Clínico São Paulo');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar Admin da Empresa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dr. João Silva\",\n  \"email\": \"joao.silva@centroclinico.com.br\",\n  \"password\": \"senha123456\",\n  \"role\": \"ADMIN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "agents"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔐 2. Autenticação",
+      "item": [
+        {
+          "name": "Login Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"joao.silva@centroclinico.com.br\",\n  \"password\": \"senha123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const auth = pm.response.json();",
+                  "    pm.collectionVariables.set('authToken', auth.access_token);",
+                  "    pm.test('Login realizado com sucesso', function () {",
+                  "        pm.expect(auth.access_token).to.be.a('string');",
+                  "        pm.expect(auth.user.role).to.eql('ADMIN');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🎯 3. Criar Filas",
+      "item": [
+        {
+          "name": "Criar Fila - Endocrinologia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Endocrinologia\",\n  \"description\": \"Consultas com endocrinologista - Dr. Maria Santos\",\n  \"queueType\": \"GENERAL\",\n  \"capacity\": 20,\n  \"avgServiceTime\": 900\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/queues",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "queues"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const queue = pm.response.json();",
+                  "    pm.collectionVariables.set('queueId', queue.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar Fila - Pediatria",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Pediatria\",\n  \"description\": \"Consultas pediátricas - Dra. Ana Costa\",\n  \"queueType\": \"PRIORITY\",\n  \"capacity\": 25,\n  \"avgServiceTime\": 1200\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/queues",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "queues"]
+            }
+          }
+        },
+        {
+          "name": "Criar Fila - Raio-X",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Raio-X\",\n  \"description\": \"Exames de radiografia\",\n  \"queueType\": \"GENERAL\",\n  \"capacity\": 15,\n  \"avgServiceTime\": 300\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/queues",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "queues"]
+            }
+          }
+        },
+        {
+          "name": "Criar Fila - Oftalmologia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Oftalmologia\",\n  \"description\": \"Consultas oftalmológicas - Dr. Carlos Lima\",\n  \"queueType\": \"GENERAL\",\n  \"capacity\": 12,\n  \"avgServiceTime\": 600\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/queues",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "queues"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📋 4. Listar Filas",
+      "item": [
+        {
+          "name": "Listar Todas as Filas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/queues",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "queues"]
+            }
+          }
+        },
+        {
+          "name": "Buscar Fila Específica",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/queues/{{queueId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "queues", "{{queueId}}"]
+            }
+          }
+        },
+        {
+          "name": "👑 Dashboard - TODOS os Clientes em TODAS as Filas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/queues/all-tickets",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "queues", "all-tickets"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    ",
+                  "    pm.test('Resposta possui summary e queues', function () {",
+                  "        pm.expect(data).to.have.property('summary');",
+                  "        pm.expect(data).to.have.property('queues');",
+                  "        pm.expect(data.queues).to.be.an('array');",
+                  "    });",
+                  "    ",
+                  "    pm.test('Summary possui estatísticas consolidadas', function () {",
+                  "        pm.expect(data.summary).to.have.property('totalQueues');",
+                  "        pm.expect(data.summary).to.have.property('totalWaiting');",
+                  "        pm.expect(data.summary).to.have.property('totalCalled');",
+                  "        pm.expect(data.summary).to.have.property('avgWaitTime');",
+                  "        pm.expect(data.summary).to.have.property('lastUpdated');",
+                  "    });",
+                  "    ",
+                  "    if (data.queues.length > 0) {",
+                  "        pm.test('Filas possuem informações completas', function () {",
+                  "            const queue = data.queues[0];",
+                  "            pm.expect(queue).to.have.property('id');",
+                  "            pm.expect(queue).to.have.property('name');",
+                  "            pm.expect(queue).to.have.property('currentNumber');",
+                  "            pm.expect(queue).to.have.property('totalWaiting');",
+                  "            pm.expect(queue).to.have.property('tickets');",
+                  "        });",
+                  "    }",
+                  "    ",
+                  "    console.log('📊 Estatísticas Consolidadas:');",
+                  "    console.log(`🏢 Total de Filas: ${data.summary.totalQueues}`);",
+                  "    console.log(`⏳ Aguardando: ${data.summary.totalWaiting}`);",
+                  "    console.log(`📞 Chamados: ${data.summary.totalCalled}`);",
+                  "    console.log(`✅ Completados: ${data.summary.totalCompleted}`);",
+                  "    console.log(`⏱️ Tempo Médio: ${data.summary.avgWaitTime}s`);",
+                  "    ",
+                  "    data.queues.forEach(queue => {",
+                  "        console.log(`\\n🎯 ${queue.name}: ${queue.totalWaiting} aguardando, atual: ${queue.currentNumber}`);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🎟️ 5. Cliente - Tirar Senhas",
+      "item": [
+        {
+          "name": "Cliente entra na Fila (Endocrinologia)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientName\": \"Maria Silva\",\n  \"clientPhone\": \"(11) 99999-1111\",\n  \"clientEmail\": \"maria.silva@email.com\",\n  \"priority\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueId}}/tickets",
+              "host": ["{{baseUrl}}"],
+              "path": ["queues", "{{queueId}}", "tickets"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const ticket = pm.response.json();",
+                  "    pm.collectionVariables.set('ticketId', ticket.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cliente 2 entra na Fila",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientName\": \"João Santos\",\n  \"clientPhone\": \"(11) 99999-2222\",\n  \"priority\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueId}}/tickets",
+              "host": ["{{baseUrl}}"],
+              "path": ["queues", "{{queueId}}", "tickets"]
+            }
+          }
+        },
+        {
+          "name": "Cliente 3 entra na Fila",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientName\": \"Ana Costa\",\n  \"clientPhone\": \"(11) 99999-3333\",\n  \"priority\": 2\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/queues/{{queueId}}/tickets",
+              "host": ["{{baseUrl}}"],
+              "path": ["queues", "{{queueId}}", "tickets"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👁️ 6. Cliente - Consultar Status",
+      "item": [
+        {
+          "name": "Verificar Status do Ticket",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📞 7. Atendente - Gerenciar Fila",
+      "item": [
+        {
+          "name": "Chamar Próximo da Fila",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/queues/{{queueId}}/call-next",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "queues", "{{queueId}}", "call-next"]
+            }
+          }
+        },
+        {
+          "name": "Rechamar Ticket",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/recall",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "recall"]
+            }
+          }
+        },
+        {
+          "name": "Pular Ticket",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/skip",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "skip"]
+            }
+          }
+        },
+        {
+          "name": "Completar Atendimento",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "complete"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔧 8. Testes de Segurança",
+      "item": [
+        {
+          "name": "Teste Rate Limiting",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Executar múltiplas vezes para testar rate limiting",
+                  "pm.test('Rate limiting funcionando', function () {",
+                  "    pm.expect([200, 429]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Teste JWT Inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer token_invalido"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/queues",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "queues"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('JWT inválido rejeitado', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Teste Cross-Tenant Access",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/fake-tenant-id/queues",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "fake-tenant-id", "queues"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Cross-tenant access bloqueado', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📊 9. Cenário Completo",
+      "item": [
+        {
+          "name": "🏥 Fluxo Centro Clínico Completo",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Este é um teste de fluxo completo",
+                  "// Execute os requests em ordem para simular o cenário real"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}/queues",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}", "queues"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📱 8. Cliente - APP Multi-Filas",
+      "item": [
+        {
+          "name": "🔍 Buscar TODAS as Senhas do Cliente",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/clients/my-tickets?phone={{clientPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients", "my-tickets"],
+              "query": [
+                {
+                  "key": "phone",
+                  "value": "{{clientPhone}}"
+                },
+                {
+                  "key": "email",
+                  "value": "{{clientEmail}}",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "📊 Dashboard Consolidado do Cliente",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/clients/dashboard?phone={{clientPhone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients", "dashboard"],
+              "query": [
+                {
+                  "key": "phone",
+                  "value": "{{clientPhone}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "⚡ Métricas de Velocidade em Tempo Real",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/clients/queue-metrics?queueId={{queueId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients", "queue-metrics"],
+              "query": [
+                {
+                  "key": "queueId",
+                  "value": "{{queueId}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001/api/v1"
+    },
+    {
+      "key": "authToken",
+      "value": ""
+    },
+    {
+      "key": "tenantId",
+      "value": ""
+    },
+    {
+      "key": "queueId",
+      "value": ""
+    },
+    {
+      "key": "ticketId",
+      "value": ""
+    },
+    {
+      "key": "clientPhone",
+      "value": "(11) 99999-1111"
+    },
+    {
+      "key": "clientEmail",
+      "value": "cliente@test.com"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Setup global para todos os requests",
+          "console.log('🎫 Fila Digital API - Request iniciado');"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Verificações globais",
+          "pm.test('Response time aceitável', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "if (pm.response.code >= 400) {",
+          "    console.log('❌ Erro:', pm.response.status, pm.response.json());",
+          "} else {",
+          "    console.log('✅ Sucesso:', pm.response.status);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Scripts globais aqui se necessário"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Verificações globais",
+          "pm.test('Response time aceitável', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "if (pm.response.code >= 400) {",
+          "    console.log('❌ Erro:', pm.response.status, pm.response.json());",
+          "} else {",
+          "    console.log('✅ Sucesso:', pm.response.status);",
+          "}"
+        ]
+      }
+    }
+  ]
+}

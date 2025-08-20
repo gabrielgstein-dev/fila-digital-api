@@ -26,7 +26,6 @@ build
 out
 
 # Google Cloud keys
-*.json
 github-actions-*.json
 service-account-*.json
 
