@@ -14,7 +14,7 @@ on:
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID_PROD }}
   GCP_REGION: ${{ vars.GCP_REGION_PROD }}
-  SERVICE_NAME: ${{ vars.BACKEND_SERVICE_NAME_PROD }}
+  SERVICE_NAME: fila-api-prod
 
 jobs:
   deploy:
