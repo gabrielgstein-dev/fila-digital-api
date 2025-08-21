@@ -123,10 +123,12 @@ jobs:
           --cpu 1 \
           --min-instances 0 \
           --max-instances 10 \
+          --timeout 900 \
           --set-env-vars "NODE_ENV=${{ secrets.NODE_ENV_STAGE }}" \
           --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}" \
           --set-env-vars "JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}" \
-          --set-env-vars "RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
+          --set-env-vars "RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}" \
+          --set-env-vars "PORT=8080"
 
     - name: Get service URL
       if: steps.version_check.outputs.should_deploy == 'true'
