@@ -1,69 +1,12 @@
-# Dockerfile para ambiente QA
-FROM node:22-alpine AS base
+# Dockerfile simplificado para Cloud Run
+FROM node:22-slim
 
 # Instalar dependências do sistema
-RUN apk add --no-cache libc6-compat dumb-init
-
-# Definir diretório de trabalho
-WORKDIR /app
-
-# Copiar arquivos de configuração do pnpm
-COPY package.json pnpm-lock.yaml ./
-
-# Instalar pnpm globalmente
-RUN npm install -g pnpm
-
-# Stage para instalar dependências
-FROM base AS deps
-RUN pnpm install --frozen-lockfile --prod=false
-
-# Stage para build da aplicação
-FROM base AS builder
-
-# Copiar dependências instaladas
-COPY --from=deps /app/node_modules ./node_modules
-
-# Copiar código fonte
-COPY . .
-
-# Definir argumentos de build
-ARG NODE_ENV=stage
-ARG PORT=8080
-ARG DATABASE_URL
-ARG JWT_SECRET
-ARG JWT_EXPIRES_IN=7d
-ARG REDIS_URL
-ARG CORS_ORIGIN
-ARG WEBSOCKET_CORS_ORIGIN
-
-# Definir variáveis de ambiente para build
-ENV NODE_ENV=${NODE_ENV}
-ENV PORT=${PORT}
-ENV DATABASE_URL=${DATABASE_URL}
-ENV JWT_SECRET=${JWT_SECRET}
-ENV JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
-ENV REDIS_URL=${REDIS_URL}
-ENV CORS_ORIGIN=${CORS_ORIGIN}
-ENV WEBSOCKET_CORS_ORIGIN=${WEBSOCKET_CORS_ORIGIN}
-
-# Gerar Prisma Client
-RUN npx prisma generate
-
-# Build da aplicação
-RUN pnpm run build
-
-# Remover dependências de desenvolvimento
-RUN pnpm prune --prod
-
-# Stage final - runtime
-FROM node:22-alpine AS runtime
-
-# Instalar dependências do sistema
-RUN apk add --no-cache libc6-compat dumb-init wget
-
-# Criar usuário não-root
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nestjs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    openssl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Definir diretório de trabalho
 WORKDIR /app
@@ -71,42 +14,23 @@ WORKDIR /app
 # Instalar pnpm
 RUN npm install -g pnpm
 
-# Copiar arquivos necessários do builder
-COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
-COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nestjs:nodejs /app/package.json ./package.json
-COPY --from=builder --chown=nestjs:nodejs /app/prisma ./prisma
+# Copiar arquivos de configuração
+COPY package.json pnpm-lock.yaml ./
 
-# Definir argumentos de build para runtime
-ARG NODE_ENV=stage
-ARG PORT=8080
-ARG DATABASE_URL
-ARG JWT_SECRET
-ARG JWT_EXPIRES_IN=7d
-ARG REDIS_URL
-ARG CORS_ORIGIN
-ARG WEBSOCKET_CORS_ORIGIN
+# Instalar dependências
+RUN pnpm install --frozen-lockfile
 
-# Definir variáveis de ambiente
-ENV NODE_ENV=${NODE_ENV}
-ENV PORT=${PORT}
-ENV DATABASE_URL=${DATABASE_URL}
-ENV JWT_SECRET=${JWT_SECRET}
-ENV JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
-ENV REDIS_URL=${REDIS_URL}
-ENV CORS_ORIGIN=${CORS_ORIGIN}
-ENV WEBSOCKET_CORS_ORIGIN=${WEBSOCKET_CORS_ORIGIN}
+# Copiar código fonte
+COPY . .
 
-# Expor porta
-EXPOSE ${PORT}
+# Gerar Prisma Client
+RUN npx prisma generate
 
-# Mudar para usuário não-root
-USER nestjs
+# Build da aplicação
+RUN pnpm run build
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/health || exit 1
+# Expor porta 8080
+EXPOSE 8080
 
 # Comando para iniciar a aplicação
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["sh", "-c", "echo 'Starting application...' && echo 'NODE_ENV=' $NODE_ENV && echo 'PORT=' $PORT && node dist/main.js"] 
+CMD ["node", "dist/main.js"] 

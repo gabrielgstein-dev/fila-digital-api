@@ -58,13 +58,13 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
-  const port = configService.get('PORT') || 3001;
+    const port = process.env.PORT || 8080;
   console.log(`🔧 Configurando para escutar na porta: ${port}`);
-
+  
   await app.listen(port, '0.0.0.0');
   console.log(`✅ Servidor iniciado com sucesso!`);
-  console.log(`🚀 API rodando em http://localhost:${port}`);
-  console.log(`📚 Documentação disponível em http://localhost:${port}/api`);
+  console.log(`🚀 API rodando em http://0.0.0.0:${port}`);
+  console.log(`📚 Documentação disponível em http://0.0.0.0:${port}/api`);
 }
 
 bootstrap().catch((error) => {

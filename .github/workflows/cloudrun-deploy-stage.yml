@@ -92,7 +92,7 @@ jobs:
           exit 1
         fi
         
-        docker build -f Dockerfile.qa -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+        docker build --platform linux/amd64 -f Dockerfile.qa -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
                      -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
                      -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
 
