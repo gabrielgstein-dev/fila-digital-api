@@ -35,14 +35,13 @@ import { SanitizeInterceptor } from './common/interceptors/sanitize.interceptor'
         limit: 100, // 100 requests por minuto
       },
     ]),
-    // Temporariamente removidos para teste
-    // PrismaModule,
-    // AuthModule,
-    // QueuesModule,
-    // TicketsModule,
-    // EventsModule,
-    // ClientsModule,
-    // MessagingModule,
+    PrismaModule,
+    AuthModule.forRoot(),
+    QueuesModule,
+    TicketsModule,
+    EventsModule,
+    ClientsModule,
+    MessagingModule,
   ],
   controllers: [AppController],
   providers: [

@@ -16,7 +16,7 @@ async function bootstrap() {
 
   console.log('🏗️ [STEP 2] Criando aplicação NestJS...');
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log', 'debug', 'verbose']
+    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
   console.log('✅ [STEP 2] Aplicação NestJS criada com sucesso!');
 
@@ -80,11 +80,15 @@ async function bootstrap() {
   console.log(`🚀 [STEP 9] Fazendo bind em 0.0.0.0:${port}...`);
 
   await app.listen(port, '0.0.0.0');
-  
+
   console.log('🎉 [SUCCESS] Servidor iniciado com sucesso!');
   console.log(`🌍 [SUCCESS] API rodando em http://0.0.0.0:${port}`);
-  console.log(`📖 [SUCCESS] Documentação disponível em http://0.0.0.0:${port}/api`);
-  console.log(`❤️ [SUCCESS] Health check em http://0.0.0.0:${port}/api/v1/health`);
+  console.log(
+    `📖 [SUCCESS] Documentação disponível em http://0.0.0.0:${port}/api`,
+  );
+  console.log(
+    `❤️ [SUCCESS] Health check em http://0.0.0.0:${port}/api/v1/health`,
+  );
 }
 
 bootstrap().catch((error) => {
