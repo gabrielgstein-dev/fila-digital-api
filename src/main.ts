@@ -6,7 +6,14 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  console.log('🚀 Iniciando aplicação...');
+  console.log('📊 Variáveis de ambiente:');
+  console.log('  NODE_ENV:', process.env.NODE_ENV);
+  console.log('  PORT:', process.env.PORT);
+  console.log('  DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+
   const app = await NestFactory.create(AppModule);
+  console.log('✅ Aplicação NestJS criada');
 
   const configService = app.get(ConfigService);
 
@@ -52,10 +59,15 @@ async function bootstrap() {
   SwaggerModule.setup('api', app, document);
 
   const port = configService.get('PORT') || 3001;
-  await app.listen(port);
-
+  console.log(`🔧 Configurando para escutar na porta: ${port}`);
+  
+  await app.listen(port, '0.0.0.0');
+  console.log(`✅ Servidor iniciado com sucesso!`);
   console.log(`🚀 API rodando em http://localhost:${port}`);
   console.log(`📚 Documentação disponível em http://localhost:${port}/api`);
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  console.error('❌ Erro fatal ao inicializar aplicação:', error);
+  process.exit(1);
+});
