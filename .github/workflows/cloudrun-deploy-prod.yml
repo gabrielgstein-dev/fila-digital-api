@@ -14,7 +14,7 @@ on:
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID_PROD }}
   GCP_REGION: ${{ vars.GCP_REGION_PROD }}
-  SERVICE_NAME: fila-api-prod
+  SERVICE_NAME: ${{ vars.BACKEND_SERVICE_NAME_PROD }}
 
 jobs:
   deploy:
@@ -62,31 +62,29 @@ jobs:
 
     - name: Configure Docker to use gcloud as a credential helper
       if: steps.version_check.outputs.should_deploy == 'true'
-      run: |
-        gcloud auth configure-docker us-docker.pkg.dev
-        gcloud auth configure-docker gcr.io
+      run: gcloud auth configure-docker
 
     - name: Build Docker image
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
         VERSION="${{ steps.version_check.outputs.version }}"
-        docker build -t us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:$VERSION \
-                     -t us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:$GITHUB_SHA \
-                     -t us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:latest .
+        docker build -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
 
     - name: Push Docker image
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
         VERSION="${{ steps.version_check.outputs.version }}"
-        docker push us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:$VERSION
-        docker push us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:$GITHUB_SHA
-        docker push us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:latest
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
 
     - name: Deploy to Cloud Run
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
         gcloud run deploy $SERVICE_NAME \
-          --image us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:$GITHUB_SHA \
+          --image gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
           --region $GCP_REGION \
           --platform managed \
           --allow-unauthenticated \

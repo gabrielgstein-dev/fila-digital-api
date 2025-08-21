@@ -12,10 +12,9 @@ on:
         default: 'latest-stage'
 
 env:
-  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-
-  GCP_REGION: ${{ vars.GCP_REGION }}
-  SERVICE_NAME: fila-api-stage
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID_STAGE }}
+  GCP_REGION: ${{ vars.GCP_REGION_STAGE }}
+  SERVICE_NAME: ${{ vars.BACKEND_SERVICE_NAME_STAGE }}
 
 jobs:
   deploy:
@@ -56,14 +55,12 @@ jobs:
       if: steps.version_check.outputs.should_deploy == 'true'
       uses: google-github-actions/setup-gcloud@v2
       with:
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        service_account_key: ${{ secrets.GCP_SA_KEY_STAGE }}
+        project_id: ${{ secrets.GCP_PROJECT_ID_STAGE }}
 
     - name: Configure Docker to use gcloud as a credential helper
       if: steps.version_check.outputs.should_deploy == 'true'
-      run: |
-        gcloud auth configure-docker us-docker.pkg.dev
-        gcloud auth configure-docker gcr.io
+      run: gcloud auth configure-docker
 
 
 
@@ -86,23 +83,23 @@ jobs:
           exit 1
         fi
         
-        docker build -f Dockerfile.qa -t us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:$VERSION \
-                     -t us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:$GITHUB_SHA \
-                     -t us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:latest .
+        docker build -f Dockerfile.qa -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
 
     - name: Push Docker image
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
         VERSION="${{ steps.version_check.outputs.version }}"
-        docker push us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:$VERSION
-        docker push us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:$GITHUB_SHA
-        docker push us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:latest
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
 
     - name: Deploy to Cloud Run
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
         gcloud run deploy $SERVICE_NAME \
-          --image us-docker.pkg.dev/$GCP_PROJECT_ID/docker-repo/$SERVICE_NAME:$GITHUB_SHA \
+          --image gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
           --region $GCP_REGION \
           --platform managed \
           --allow-unauthenticated \

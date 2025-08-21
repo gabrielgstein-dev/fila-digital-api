@@ -104,20 +104,36 @@ Configure os seguintes secrets no seu repositório GitHub:
 
 ### Secrets Obrigatórios
 
-- `GCP_SA_KEY`: Conteúdo do arquivo `key.json` da conta de serviço
-- `GCP_PROJECT_ID`: ID do projeto GCP para staging
+**Para Staging:**
+- `GCP_SA_KEY_STAGE`: Conteúdo do arquivo `key.json` da conta de serviço para staging
+- `GCP_PROJECT_ID_STAGE`: ID do projeto GCP para staging
+
+**Para Produção:**
+- `GCP_SA_KEY_PROD`: Conteúdo do arquivo `key.json` da conta de serviço para produção
 - `GCP_PROJECT_ID_PROD`: ID do projeto GCP para produção
 
 ### Secrets de Ambiente
 
+**Staging:**
 - `DATABASE_URL_STAGE`: URL do banco de dados para staging
 - `JWT_SECRET_STAGE`: Chave secreta JWT para staging
 - `RABBITMQ_URL_STAGE`: URL do RabbitMQ para staging
 
-### Variáveis
+**Produção:**
+- `DATABASE_URL_PROD`: URL do banco de dados para produção
+- `JWT_SECRET_PROD`: Chave secreta JWT para produção
+- `RABBITMQ_URL_PROD`: URL do RabbitMQ para produção
 
-- `GCP_REGION`: Região do GCP (ex: us-central1)
+### Variáveis (vars)
+
+**Staging:**
+- `GCP_REGION_STAGE`: Região do GCP para staging (ex: us-central1)
 - `NODE_ENV_STAGE`: Ambiente Node.js para staging
+- `BACKEND_SERVICE_NAME_STAGE`: Nome do serviço no Cloud Run (ex: fila-api-stage)
+
+**Produção:**
+- `GCP_REGION_PROD`: Região do GCP para produção (ex: us-central1)
+- `BACKEND_SERVICE_NAME_PROD`: Nome do serviço no Cloud Run (ex: fila-api-prod)
 
 ## Verificação
 
