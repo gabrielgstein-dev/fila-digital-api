@@ -60,7 +60,7 @@ async function bootstrap() {
 
   const port = configService.get('PORT') || 3001;
   console.log(`🔧 Configurando para escutar na porta: ${port}`);
-  
+
   await app.listen(port, '0.0.0.0');
   console.log(`✅ Servidor iniciado com sucesso!`);
   console.log(`🚀 API rodando em http://localhost:${port}`);
