@@ -13,8 +13,8 @@ on:
 
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID_STAGE }}
-  GCP_REGION: ${{ vars.GCP_REGION_STAGE }}
-  SERVICE_NAME: ${{ vars.BACKEND_SERVICE_NAME_STAGE }}
+  GCP_REGION: ${{ secrets.GCP_REGION_STAGE }}
+  SERVICE_NAME: ${{ secrets.BACKEND_SERVICE_NAME_STAGE }}
 
 jobs:
   deploy:
@@ -108,7 +108,7 @@ jobs:
           --cpu 1 \
           --min-instances 0 \
           --max-instances 10 \
-          --set-env-vars NODE_ENV=${{ vars.NODE_ENV_STAGE }},DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }},JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }},RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}
+          --set-env-vars NODE_ENV=${{ secrets.NODE_ENV_STAGE }},DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }},JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }},RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}
 
     - name: Get service URL
       if: steps.version_check.outputs.should_deploy == 'true'
