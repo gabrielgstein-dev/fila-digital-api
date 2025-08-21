@@ -51,19 +51,25 @@ jobs:
           echo "❌ Evento não suportado para deploy"
         fi
 
+    - name: Authenticate to Google Cloud
+      if: steps.version_check.outputs.should_deploy == 'true'
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY_STAGE }}
+
     - name: Setup Google Cloud CLI
       if: steps.version_check.outputs.should_deploy == 'true'
       uses: google-github-actions/setup-gcloud@v2
       with:
-        service_account_key: ${{ secrets.GCP_SA_KEY_STAGE }}
         project_id: ${{ secrets.GCP_PROJECT_ID_STAGE }}
 
     - name: Configure Docker to use gcloud as a credential helper
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
-        gcloud auth configure-docker gcr.io
+        echo "Configurando autenticação..."
         gcloud auth list
         gcloud config list
+        gcloud auth configure-docker gcr.io --quiet
 
 
 
@@ -98,9 +104,7 @@ jobs:
         echo "Imagens construídas:"
         docker images | grep gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME
         echo "Verificando autenticação:"
-        gcloud auth list --filter=status:ACTIVE --format="value(account)"
-        echo "Testando autenticação no registry:"
-        gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://gcr.io
+        gcloud auth list
         echo "Fazendo push das imagens:"
         docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION
         docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
