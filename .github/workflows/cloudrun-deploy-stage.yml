@@ -60,7 +60,10 @@ jobs:
 
     - name: Configure Docker to use gcloud as a credential helper
       if: steps.version_check.outputs.should_deploy == 'true'
-      run: gcloud auth configure-docker
+      run: |
+        gcloud auth configure-docker gcr.io
+        gcloud auth list
+        gcloud config list
 
 
 
@@ -91,6 +94,14 @@ jobs:
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
         VERSION="${{ steps.version_check.outputs.version }}"
+        echo "🔍 Debug antes do push:"
+        echo "Imagens construídas:"
+        docker images | grep gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME
+        echo "Verificando autenticação:"
+        gcloud auth list --filter=status:ACTIVE --format="value(account)"
+        echo "Testando autenticação no registry:"
+        gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://gcr.io
+        echo "Fazendo push das imagens:"
         docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION
         docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
         docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
