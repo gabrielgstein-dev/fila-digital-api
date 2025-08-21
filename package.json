@@ -1,6 +1,6 @@
 {
   "name": "fila-api",
-  "version": "0.0.11-stage",
+  "version": "0.0.12-stage",
   "description": "API para sistema de fila digital",
   "author": "",
   "private": true,
