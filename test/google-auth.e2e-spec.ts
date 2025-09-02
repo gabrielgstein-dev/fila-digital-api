@@ -1,53 +1,24 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { TestHelper } from './test-setup';
 import * as request from 'supertest';
-import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/prisma/prisma.service';
-import { cleanDatabase, teardownTestDatabase } from './setup-database';
 import { AuthService } from '../src/auth/auth.service';
+import * as bcrypt from 'bcrypt';
 
 describe('Google Authentication (e2e)', () => {
   jest.setTimeout(30000);
-  let app: INestApplication;
-  let prisma: PrismaService;
+  let testHelper: TestHelper;
   let authService: AuthService;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({
-          envFilePath: '.env.test',
-          isGlobal: true,
-        }),
-        AppModule,
-      ],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    prisma = app.get<PrismaService>(PrismaService);
-    authService = app.get<AuthService>(AuthService);
-
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-
-    app.setGlobalPrefix('api/v1');
-
-    await app.init();
-  });
-
-  beforeEach(async () => {
-    await cleanDatabase(prisma);
+    testHelper = await TestHelper.createInstance();
+    authService = testHelper.app.get<AuthService>(AuthService);
   });
 
   afterAll(async () => {
-    await teardownTestDatabase(prisma);
-    await app.close();
+    // Não fechar o servidor global aqui
+  });
+
+  beforeEach(async () => {
+    await testHelper.beforeEach();
   });
 
   describe('Google OAuth Flow (Simulated)', () => {
@@ -67,7 +38,7 @@ describe('Google Authentication (e2e)', () => {
       expect(result.picture).toBe(googleUser.picture);
 
       // Verificar se foi criado no banco
-      const userInDb = await prisma.user.findUnique({
+      const userInDb = await testHelper.prisma.user.findUnique({
         where: { email: googleUser.email },
       });
       expect(userInDb).toBeDefined();
@@ -76,7 +47,7 @@ describe('Google Authentication (e2e)', () => {
 
     it('deve reconhecer agente existente pelo email', async () => {
       // Criar tenant e agente
-      const tenant = await prisma.tenant.create({
+      const tenant = await testHelper.prisma.tenant.create({
         data: {
           name: 'Test Tenant',
           slug: `test-tenant-${Date.now()}`,
@@ -84,12 +55,13 @@ describe('Google Authentication (e2e)', () => {
         },
       });
 
-      const agent = await prisma.agent.create({
+      const agent = await testHelper.prisma.agent.create({
         data: {
           email: 'agente@test.com',
           name: 'Agente Teste',
           password: 'hashed-password',
           tenantId: tenant.id,
+          cpf: '12345678901',
         },
       });
 
@@ -106,7 +78,7 @@ describe('Google Authentication (e2e)', () => {
       expect(result.tenantId).toBe(tenant.id);
 
       // Verificar se o googleId foi atualizado
-      const updatedAgent = await prisma.agent.findUnique({
+      const updatedAgent = await testHelper.prisma.agent.findUnique({
         where: { id: agent.id },
       });
       expect(updatedAgent?.googleId).toBe(googleUser.googleId);
@@ -130,7 +102,7 @@ describe('Google Authentication (e2e)', () => {
 
     it('deve gerar JWT correto para agente', async () => {
       // Criar tenant e agente
-      const tenant = await prisma.tenant.create({
+      const tenant = await testHelper.prisma.tenant.create({
         data: {
           name: 'Test Tenant JWT',
           slug: `test-tenant-jwt-${Date.now()}`,
@@ -138,12 +110,13 @@ describe('Google Authentication (e2e)', () => {
         },
       });
 
-      await prisma.agent.create({
+      await testHelper.prisma.agent.create({
         data: {
           email: 'agente-jwt@test.com',
           name: 'Agente JWT',
           password: 'hashed-password',
           tenantId: tenant.id,
+          cpf: '12345678902',
         },
       });
 
@@ -181,7 +154,7 @@ describe('Google Authentication (e2e)', () => {
     });
 
     it('deve retornar informações do cliente logado', async () => {
-      const response = await request(app.getHttpServer())
+      const response = await request(testHelper.app.getHttpServer())
         .get('/api/v1/clients/me')
         .set('Authorization', `Bearer ${clientToken}`)
         .expect(200);
@@ -193,7 +166,7 @@ describe('Google Authentication (e2e)', () => {
 
     it('deve buscar senhas automaticamente para cliente logado', async () => {
       // Primeiro, vamos criar um tenant e fila para testar
-      const tenant = await prisma.tenant.create({
+      const tenant = await testHelper.prisma.tenant.create({
         data: {
           name: 'Test Tenant Client',
           slug: `test-tenant-client-${Date.now()}`,
@@ -201,7 +174,7 @@ describe('Google Authentication (e2e)', () => {
         },
       });
 
-      const queue = await prisma.queue.create({
+      const queue = await testHelper.prisma.queue.create({
         data: {
           name: 'Test Queue',
           tenantId: tenant.id,
@@ -209,9 +182,9 @@ describe('Google Authentication (e2e)', () => {
       });
 
       // Criar ticket associado ao usuário logado
-      await prisma.ticket.create({
+      await testHelper.prisma.ticket.create({
         data: {
-          number: 1,
+          myCallingToken: 'A001',
           queueId: queue.id,
           userId: clientUser.id,
           clientName: clientUser.name,
@@ -219,7 +192,7 @@ describe('Google Authentication (e2e)', () => {
         },
       });
 
-      const response = await request(app.getHttpServer())
+      const response = await request(testHelper.app.getHttpServer())
         .get('/api/v1/clients/my-tickets')
         .set('Authorization', `Bearer ${clientToken}`)
         .expect(200);
@@ -230,7 +203,7 @@ describe('Google Authentication (e2e)', () => {
     });
 
     it('deve acessar dashboard automaticamente para cliente logado', async () => {
-      const response = await request(app.getHttpServer())
+      const response = await request(testHelper.app.getHttpServer())
         .get('/api/v1/clients/dashboard')
         .set('Authorization', `Bearer ${clientToken}`)
         .expect(200);
@@ -242,7 +215,7 @@ describe('Google Authentication (e2e)', () => {
 
     it('deve permitir acesso sem autenticação com telefone/email', async () => {
       // Criar ticket sem userId (método tradicional)
-      const tenant = await prisma.tenant.create({
+      const tenant = await testHelper.prisma.tenant.create({
         data: {
           name: 'Test Tenant Traditional',
           slug: `test-tenant-trad-${Date.now()}`,
@@ -250,23 +223,23 @@ describe('Google Authentication (e2e)', () => {
         },
       });
 
-      const queue = await prisma.queue.create({
+      const queue = await testHelper.prisma.queue.create({
         data: {
           name: 'Test Queue Traditional',
           tenantId: tenant.id,
         },
       });
 
-      await prisma.ticket.create({
+      await testHelper.prisma.ticket.create({
         data: {
-          number: 1,
+          myCallingToken: 'A002',
           queueId: queue.id,
           clientName: 'Cliente Sem Login',
           clientPhone: '(11) 99999-0000',
         },
       });
 
-      const response = await request(app.getHttpServer())
+      const response = await request(testHelper.app.getHttpServer())
         .get('/api/v1/clients/my-tickets')
         .query({ phone: '(11) 99999-0000' })
         .expect(200);
@@ -278,7 +251,7 @@ describe('Google Authentication (e2e)', () => {
 
   describe('Google Auth Routes', () => {
     it('deve redirecionar para Google OAuth', async () => {
-      const response = await request(app.getHttpServer())
+      const response = await request(testHelper.app.getHttpServer())
         .get('/api/v1/auth/google')
         .expect(302);
 
@@ -287,7 +260,7 @@ describe('Google Authentication (e2e)', () => {
     });
 
     it('deve rejeitar token móvel inválido', async () => {
-      await request(app.getHttpServer())
+      await request(testHelper.app.getHttpServer())
         .post('/api/v1/auth/google/token')
         .send({ idToken: 'invalid-token' })
         .expect(500); // Por enquanto, retorna erro pois não implementamos
@@ -297,7 +270,7 @@ describe('Google Authentication (e2e)', () => {
   describe('Validações de Segurança', () => {
     it('deve rejeitar acesso de agente a endpoints de cliente', async () => {
       // Criar agente
-      const tenant = await prisma.tenant.create({
+      const tenant = await testHelper.prisma.tenant.create({
         data: {
           name: 'Test Tenant Security',
           slug: `test-tenant-sec-${Date.now()}`,
@@ -305,27 +278,30 @@ describe('Google Authentication (e2e)', () => {
         },
       });
 
-      const agent = await prisma.agent.create({
+      const agent = await testHelper.prisma.agent.create({
         data: {
           email: 'agente-sec@test.com',
           name: 'Agente Security',
-          password: 'hashed-password',
+          password: await bcrypt.hash('senha123', 10),
           tenantId: tenant.id,
+          cpf: '12345678903',
         },
       });
 
       // Fazer login como agente
-      const agentLogin = await authService.login(agent.email, 'senha123');
+      await authService.login(agent.cpf, 'senha123');
       // Note: Isso falhará porque a senha não confere, mas é só para teste
       // Em um teste real, usaríamos bcrypt.hash para criar a senha correta
     });
 
     it('deve exigir autenticação ou dados para endpoints protegidos', async () => {
-      await request(app.getHttpServer())
+      await request(testHelper.app.getHttpServer())
         .get('/api/v1/clients/my-tickets')
         .expect(400); // Bad Request - falta telefone/email ou auth
 
-      await request(app.getHttpServer()).get('/api/v1/clients/me').expect(401); // Unauthorized - precisa de auth
+      await request(testHelper.app.getHttpServer())
+        .get('/api/v1/clients/me')
+        .expect(401); // Unauthorized - precisa de auth
     });
   });
 });

@@ -1,16 +1,21 @@
 import { PrismaService } from '../src/prisma/prisma.service';
 
 export async function cleanDatabase(prisma: PrismaService): Promise<void> {
-  // Usar deleteMany em ordem específica para evitar deadlocks
   try {
+    // Limpar todas as tabelas na ordem correta (respeitando foreign keys)
     await prisma.callLog.deleteMany();
     await prisma.ticket.deleteMany();
     await prisma.queue.deleteMany();
     await prisma.counter.deleteMany();
     await prisma.agent.deleteMany();
+    await prisma.corporateUser.deleteMany();
+    await prisma.user.deleteMany();
     await prisma.tenant.deleteMany();
+
+    console.log('✅ Banco de dados limpo com sucesso usando deleteMany');
   } catch (error) {
-    console.error('Erro ao limpar banco com deleteMany:', error);
+    console.error('❌ Erro ao limpar banco com deleteMany:', error);
+
     // Fallback para TRUNCATE CASCADE se deleteMany falhar
     try {
       const tablenames = await prisma.$queryRaw<Array<{ tablename: string }>>`
@@ -27,10 +32,15 @@ export async function cleanDatabase(prisma: PrismaService): Promise<void> {
         await prisma.$executeRawUnsafe(
           `TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`,
         );
+        console.log(
+          '✅ Banco de dados limpo com sucesso usando TRUNCATE CASCADE',
+        );
       }
     } catch (truncateError) {
-      console.error('Erro ao executar TRUNCATE CASCADE:', truncateError);
-      throw truncateError;
+      console.error('❌ Erro ao executar TRUNCATE CASCADE:', truncateError);
+      throw new Error(
+        'Falha ao limpar banco de dados: ambos os métodos falharam',
+      );
     }
   }
 }

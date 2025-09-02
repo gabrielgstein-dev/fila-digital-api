@@ -61,16 +61,17 @@ describe('Clients Endpoints (e2e)', () => {
         email: `admin-client-test-${Date.now()}@test.com`,
         name: 'Admin Client Test',
         password: await bcrypt.hash('senha123', 10),
-        role: 'ADMIN',
+        role: 'ADMINISTRADOR',
         tenantId: tenant.id,
+        cpf: `1234567890${Date.now()}`,
       },
     });
 
     // Fazer login
     const loginResponse = await request(app.getHttpServer())
-      .post('/api/v1/auth/login')
+      .post('/api/v1/auth/agent/login')
       .send({
-        email: agent.email,
+        cpf: agent.cpf,
         password: 'senha123',
       });
 

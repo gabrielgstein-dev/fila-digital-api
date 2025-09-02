@@ -11,7 +11,6 @@ describe('QueuesController (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenant: any;
-  let agent: any;
   let authToken: string;
 
   beforeAll(async () => {
@@ -52,20 +51,23 @@ describe('QueuesController (e2e)', () => {
       },
     });
 
-    agent = await prisma.agent.create({
+    const agentCpf = `1234567890${Date.now()}`.slice(-11); // Garantir exatamente 11 dígitos
+
+    await prisma.agent.create({
       data: {
         email: `admin-${Date.now()}@empresa.com`,
         name: 'Admin Teste',
         password: await bcrypt.hash('senha123', 10),
-        role: 'ADMIN',
+        role: 'ADMINISTRADOR',
         tenantId: tenant.id,
+        cpf: agentCpf,
       },
     });
 
     const loginResponse = await request(app.getHttpServer())
-      .post('/api/v1/auth/login')
+      .post('/api/v1/auth/agent/login')
       .send({
-        email: agent.email,
+        cpf: agentCpf,
         password: 'senha123',
       });
 
@@ -79,17 +81,25 @@ describe('QueuesController (e2e)', () => {
 
   describe('/tenants/:tenantId/queues (GET)', () => {
     it('deve listar filas do tenant', async () => {
-      const queue = await prisma.queue.create({
-        data: {
-          name: 'Fila Teste',
-          description: 'Descrição da fila teste',
-          queueType: 'GENERAL',
-          tenantId: tenant.id,
-        },
-      });
+      // Criar fila via API
+      const queueData = {
+        name: 'Fila Teste',
+        description: 'Descrição da fila teste',
+        queueType: 'GENERAL',
+      };
 
+      const createResponse = await request(app.getHttpServer())
+        .post(`/api/v1/tenants/${tenant.id}/queues`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(queueData)
+        .expect(201);
+
+      const queue = createResponse.body;
+
+      // Listar filas
       const response = await request(app.getHttpServer())
         .get(`/api/v1/tenants/${tenant.id}/queues`)
+        .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
       expect(response.body).toHaveLength(1);
@@ -100,6 +110,7 @@ describe('QueuesController (e2e)', () => {
     it('deve retornar lista vazia para tenant sem filas', async () => {
       const response = await request(app.getHttpServer())
         .get(`/api/v1/tenants/${tenant.id}/queues`)
+        .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
       expect(response.body).toHaveLength(0);
@@ -156,16 +167,23 @@ describe('QueuesController (e2e)', () => {
 
   describe('/tenants/:tenantId/queues/:id (GET)', () => {
     it('deve buscar fila específica', async () => {
-      const queue = await prisma.queue.create({
-        data: {
-          name: 'Fila Específica',
-          queueType: 'VIP',
-          tenantId: tenant.id,
-        },
-      });
+      // Criar fila via API
+      const queueData = {
+        name: 'Fila Específica',
+        queueType: 'VIP',
+      };
+
+      const createResponse = await request(app.getHttpServer())
+        .post(`/api/v1/tenants/${tenant.id}/queues`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(queueData)
+        .expect(201);
+
+      const queue = createResponse.body;
 
       const response = await request(app.getHttpServer())
         .get(`/api/v1/tenants/${tenant.id}/queues/${queue.id}`)
+        .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
       expect(response.body.id).toBe(queue.id);
@@ -178,27 +196,40 @@ describe('QueuesController (e2e)', () => {
 
       await request(app.getHttpServer())
         .get(`/api/v1/tenants/${tenant.id}/queues/${fakeId}`)
+        .set('Authorization', `Bearer ${authToken}`)
         .expect(404);
     });
   });
 
   describe('/tenants/:tenantId/queues/:id/call-next (POST)', () => {
     it('deve chamar próximo da fila', async () => {
-      const queue = await prisma.queue.create({
-        data: {
-          name: 'Fila para Chamar',
-          tenantId: tenant.id,
-        },
-      });
+      // Criar fila via API
+      const queueData = {
+        name: 'Fila para Chamar',
+      };
 
-      const ticket = await prisma.ticket.create({
-        data: {
-          number: 1,
-          priority: 1,
-          status: 'WAITING',
-          queueId: queue.id,
-        },
-      });
+      const createQueueResponse = await request(app.getHttpServer())
+        .post(`/api/v1/tenants/${tenant.id}/queues`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(queueData)
+        .expect(201);
+
+      const queue = createQueueResponse.body;
+
+      // Criar ticket via API
+      const ticketData = {
+        clientName: 'Cliente Teste',
+        clientPhone: '(11) 99999-0000',
+        priority: 1,
+      };
+
+      const createTicketResponse = await request(app.getHttpServer())
+        .post(`/api/v1/queues/${queue.id}/tickets`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(ticketData)
+        .expect(201);
+
+      const ticket = createTicketResponse.body;
 
       const response = await request(app.getHttpServer())
         .post(`/api/v1/tenants/${tenant.id}/queues/${queue.id}/call-next`)
@@ -211,12 +242,18 @@ describe('QueuesController (e2e)', () => {
     });
 
     it('deve retornar erro quando não há tickets na fila', async () => {
-      const queue = await prisma.queue.create({
-        data: {
-          name: 'Fila Vazia',
-          tenantId: tenant.id,
-        },
-      });
+      // Criar fila via API
+      const queueData = {
+        name: 'Fila Vazia',
+      };
+
+      const createQueueResponse = await request(app.getHttpServer())
+        .post(`/api/v1/tenants/${tenant.id}/queues`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(queueData)
+        .expect(201);
+
+      const queue = createQueueResponse.body;
 
       await request(app.getHttpServer())
         .post(`/api/v1/tenants/${tenant.id}/queues/${queue.id}/call-next`)

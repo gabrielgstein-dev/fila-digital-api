@@ -1,78 +1,29 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import * as request from 'supertest';
-import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/prisma/prisma.service';
-import * as bcrypt from 'bcrypt';
-import { cleanDatabase, teardownTestDatabase } from './setup-database';
+import { TestHelper } from './test-setup';
 
 describe('AuthController (e2e)', () => {
-  let app: INestApplication;
-  let prisma: PrismaService;
-  let tenant: any;
-  let agent: any;
+  let testHelper: TestHelper;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({
-          envFilePath: '.env.test',
-          isGlobal: true,
-        }),
-        AppModule,
-      ],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    prisma = app.get<PrismaService>(PrismaService);
-
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-
-    app.setGlobalPrefix('api/v1');
-
-    await app.init();
-  });
-
-  beforeEach(async () => {
-    await cleanDatabase(prisma);
-
-    tenant = await prisma.tenant.create({
-      data: {
-        name: 'Empresa Teste',
-        slug: `empresa-teste-${Date.now()}`,
-        email: 'contato@empresa.com',
-      },
-    });
-
-    agent = await prisma.agent.create({
-      data: {
-        email: `admin-${Date.now()}@empresa.com`,
-        name: 'Admin Teste',
-        password: await bcrypt.hash('senha123', 10),
-        role: 'ADMIN',
-        tenantId: tenant.id,
-      },
-    });
+    testHelper = await TestHelper.createInstance();
   });
 
   afterAll(async () => {
-    await teardownTestDatabase(prisma);
-    await app.close();
+    await testHelper.afterAll();
   });
 
-  describe('/auth/login (POST)', () => {
+  beforeEach(async () => {
+    await testHelper.beforeEach();
+  });
+
+  describe('/auth/agent/login (POST)', () => {
     it('deve fazer login com credenciais válidas', async () => {
-      const response = await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
+      const { agent, token } = await testHelper.setupCompleteTestDataWithAuth();
+
+      const response = await testHelper
+        .getRequest()
+        .post('/api/v1/auth/agent/login')
         .send({
-          email: agent.email,
+          cpf: agent.cpf,
           password: 'senha123',
         })
         .expect(200);
@@ -80,53 +31,85 @@ describe('AuthController (e2e)', () => {
       expect(response.body).toHaveProperty('access_token');
       expect(response.body).toHaveProperty('user');
       expect(response.body.user.email).toBe(agent.email);
-      expect(response.body.user.role).toBe('ADMIN');
+      expect(response.body.user.cpf).toBe(agent.cpf);
+      expect(response.body.user.role).toBe('ADMINISTRADOR');
       expect(response.body.user).not.toHaveProperty('password');
     });
 
-    it('deve rejeitar login com email inválido', async () => {
-      await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
-        .send({
-          email: 'usuario@inexistente.com',
-          password: 'senha123',
-        })
-        .expect(401);
-    });
-
     it('deve rejeitar login com senha incorreta', async () => {
-      await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
+      const { agent } = await testHelper.setupCompleteTestData();
+
+      await testHelper
+        .getRequest()
+        .post('/api/v1/auth/agent/login')
         .send({
-          email: agent.email,
+          cpf: agent.cpf,
           password: 'senhaerrada',
         })
         .expect(401);
     });
 
     it('deve rejeitar login com dados inválidos', async () => {
-      await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
+      await testHelper
+        .getRequest()
+        .post('/api/v1/auth/agent/login')
         .send({
-          email: 'email-invalido',
+          cpf: 'cpf-invalido',
           password: '123',
         })
         .expect(400);
     });
 
     it('deve rejeitar login de agente inativo', async () => {
-      await prisma.agent.update({
+      const { agent } = await testHelper.setupCompleteTestData();
+
+      await testHelper.prisma.agent.update({
         where: { id: agent.id },
         data: { isActive: false },
       });
 
-      await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
+      await testHelper
+        .getRequest()
+        .post('/api/v1/auth/agent/login')
         .send({
-          email: agent.email,
+          cpf: agent.cpf,
           password: 'senha123',
         })
         .expect(401);
+    });
+
+    it('deve rejeitar login com CPF inválido', async () => {
+      await testHelper
+        .getRequest()
+        .post('/api/v1/auth/agent/login')
+        .send({
+          cpf: '12345678901',
+          password: 'senha123',
+        })
+        .expect(401);
+    });
+  });
+
+  describe('/auth/login (POST) - Corporate User', () => {
+    it('deve fazer login de usuário corporativo com credenciais válidas', async () => {
+      const tenant = await testHelper.createTenant();
+      const user = await testHelper.createCorporateUser(tenant.id, {
+        role: 'ADMINISTRADOR',
+      });
+
+      const response = await testHelper
+        .getRequest()
+        .post('/api/v1/auth/login')
+        .send({
+          email: user.email,
+          password: 'senha123',
+        })
+        .expect(200);
+
+      expect(response.body).toHaveProperty('access_token');
+      expect(response.body).toHaveProperty('user');
+      expect(response.body.user.email).toBe(user.email);
+      expect(response.body.user.role).toBe('ADMINISTRADOR');
     });
   });
 });

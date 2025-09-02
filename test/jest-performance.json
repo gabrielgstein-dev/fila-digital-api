@@ -7,19 +7,14 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "maxWorkers": 1,
-  "detectOpenHandles": true,
+  "detectOpenHandles": false,
   "forceExit": true,
   "testTimeout": 60000,
   "setupFilesAfterEnv": ["<rootDir>/test-setup.ts"],
-  "globalTeardown": "<rootDir>/global-teardown.ts",
-  "testSequencer": "<rootDir>/test-sequencer.js",
-  "verbose": false,
-  "silent": true,
-  "noStackTrace": true,
+  "verbose": true,
+  "silent": false,
+  "noStackTrace": false,
   "bail": 0,
   "maxConcurrency": 1,
-  "cache": false,
-  "clearMocks": true,
-  "resetMocks": true,
-  "restoreMocks": true
+  "testSequencer": "<rootDir>/test-sequencer.js"
 }
