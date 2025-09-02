@@ -14,6 +14,7 @@ import { ClientsModule } from './clients/clients.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { AgentsModule } from './agents/agents.module';
 import { CorporateUsersModule } from './corporate-users/corporate-users.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { SanitizeInterceptor } from './common/interceptors/sanitize.interceptor';
 import { TenantFilterInterceptor } from './common/interceptors/tenant-filter.interceptor';
 
@@ -49,6 +50,7 @@ import { TenantFilterInterceptor } from './common/interceptors/tenant-filter.int
     MessagingModule,
     AgentsModule,
     CorporateUsersModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [
