@@ -71,7 +71,30 @@ jobs:
         gcloud config list
         gcloud auth configure-docker gcr.io --quiet
 
-
+    - name: Force Clean Docker Cache Only
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        echo "🧹 Limpeza de cache Docker ANTES do build..."
+        
+        # Limpar imagens Docker locais
+        echo "🗑️ Limpando cache Docker local..."
+        docker system prune -af --volumes || true
+        docker builder prune -af || true
+        
+        # Limpar apenas imagens antigas do Container Registry (manter as 2 mais recentes)
+        echo "🗑️ Limpando imagens antigas do Container Registry (>3 dias)..."
+        gcloud container images list-tags gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME \
+          --limit=999 --sort-by=TIMESTAMP \
+          --format="get(digest)" --filter="timestamp.datetime < -P3D" | \
+          head -n -2 | \
+          while read digest; do
+            if [ ! -z "$digest" ]; then
+              echo "Deletando imagem antiga: $digest"
+              gcloud container images delete gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME@$digest --quiet --force-delete-tags || true
+            fi
+          done
+        
+        echo "✅ Limpeza de cache concluída, mantendo serviço Cloud Run intacto..."
 
     - name: Build Docker image
       if: steps.version_check.outputs.should_deploy == 'true'
@@ -92,7 +115,7 @@ jobs:
           exit 1
         fi
         
-        docker build --platform linux/amd64 -f Dockerfile.qa -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+        docker build --platform linux/amd64 --no-cache -f Dockerfile.qa -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
                      -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
                      -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
 
@@ -110,37 +133,10 @@ jobs:
         docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
         docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
 
-    - name: Force Clean Cloud Run Service
-      if: steps.version_check.outputs.should_deploy == 'true'
-      run: |
-        echo "🧹 Forçando limpeza completa do serviço Cloud Run..."
-        
-        # Limpar imagens antigas do Container Registry (manter apenas as 3 mais recentes)
-        echo "🗑️ Limpando imagens antigas do Container Registry..."
-        gcloud container images list-tags gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME \
-          --limit=999 --sort-by=TIMESTAMP \
-          --format="get(digest)" --filter="timestamp.datetime < -P7D" | \
-          while read digest; do
-            if [ ! -z "$digest" ]; then
-              echo "Deletando imagem antiga: $digest"
-              gcloud container images delete gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME@$digest --quiet || true
-            fi
-          done
-        
-        # Tentar deletar o serviço existente (ignora erro se não existir)
-        echo "🗑️ Deletando serviço Cloud Run existente..."
-        gcloud run services delete "$SERVICE_NAME" \
-          --region "$GCP_REGION" \
-          --quiet || echo "⚠️ Serviço não existia ou não pôde ser deletado"
-        
-        # Aguardar alguns segundos para garantir limpeza
-        sleep 15
-        
-        echo "✅ Limpeza completa concluída, prosseguindo com deploy limpo..."
-
     - name: Deploy to Cloud Run
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
+        echo "🚀 Fazendo deploy forçado com nova imagem..."
         gcloud run deploy "$SERVICE_NAME" \
           --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
           --region "$GCP_REGION" \
@@ -154,7 +150,17 @@ jobs:
           --timeout 3600 \
           --execution-environment gen2 \
           --cpu-boost \
+          --no-traffic \
+          --tag "v${{ steps.version_check.outputs.version }}" \
           --set-env-vars "^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render##DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}##JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
+        
+        echo "📊 Aguardando deploy estabilizar..."
+        sleep 10
+        
+        echo "🔄 Direcionando 100% do tráfego para nova versão..."
+        gcloud run services update-traffic "$SERVICE_NAME" \
+          --to-latest \
+          --region "$GCP_REGION"
 
     - name: Get service URL
       if: steps.version_check.outputs.should_deploy == 'true'
