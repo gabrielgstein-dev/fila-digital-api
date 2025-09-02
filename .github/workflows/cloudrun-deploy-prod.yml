@@ -93,8 +93,7 @@ jobs:
           --cpu 2 \
           --min-instances 1 \
           --max-instances 50 \
-          --set-env-vars "^##^NODE_ENV=production##ENVIRONMENT=production##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render" \
-          --update-secrets DATABASE_URL=DATABASE_URL_PROD:latest,JWT_SECRET=JWT_SECRET_PROD:latest,RABBITMQ_URL=RABBITMQ_URL_PROD:latest
+          --set-env-vars "^##^NODE_ENV=production##ENVIRONMENT=production##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render##DATABASE_URL=${{ secrets.DATABASE_URL_PROD }}##JWT_SECRET=${{ secrets.JWT_SECRET_PROD }}##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_PROD }}"
 
     - name: Get service URL
       if: steps.version_check.outputs.should_deploy == 'true'
