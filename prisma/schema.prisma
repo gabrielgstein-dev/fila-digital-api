@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,117 +8,112 @@ datasource db {
 }
 
 model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  email     String?
-  phone     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  queues  Queue[]
-  agents  Agent[]
-  counters Counter[]
+  id             String           @id @default(cuid())
+  name           String
+  slug           String           @unique
+  email         String?
+  phone         String?
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  agents        Agent[]
+  corporateUsers CorporateUser[]
+  counters      Counter[]
+  queues        Queue[]
 
   @@map("tenants")
 }
 
 model Queue {
-  id           String    @id @default(cuid())
-  name         String
-  description  String?
-  queueType    QueueType @default(GENERAL)
-  isActive     Boolean   @default(true)
-  capacity     Int       @default(100)
-  avgServiceTime Int     @default(300) // em segundos
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  tickets  Ticket[]
-  callLogs CallLog[]
+  id             String    @id @default(cuid())
+  name           String
+  description    String?
+  queueType      QueueType @default(GENERAL)
+  isActive       Boolean   @default(true)
+  capacity       Int       @default(100)
+  avgServiceTime Int       @default(300)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  tenantId       String
+  callLogs       CallLog[]
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tickets        Ticket[]
 
   @@map("queues")
 }
 
 model Ticket {
-  id           String       @id @default(cuid())
-  number       Int
-  priority     Int          @default(1)
-  status       TicketStatus @default(WAITING)
-  clientName   String?
-  clientPhone  String?
-  clientEmail  String?
-  estimatedTime Int?         // em segundos
-  calledAt     DateTime?
-  completedAt  DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  priority       Int          @default(1)
+  status         TicketStatus @default(WAITING)
+  clientName     String?
+  clientPhone    String?
+  clientEmail    String?
+  estimatedTime  Int?
+  calledAt       DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  queueId        String
+  userId         String?
+  myCallingToken String
+  callLogs       CallLog[]
+  queue          Queue        @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  user           User?        @relation("UserTickets", fields: [userId], references: [id])
 
-  queueId String
-  queue   Queue  @relation(fields: [queueId], references: [id], onDelete: Cascade)
-
-  // Relação opcional com usuário logado (Google)
-  userId String?
-  user   User?   @relation("UserTickets", fields: [userId], references: [id], onDelete: SetNull)
-
-  callLogs CallLog[]
-
-  @@unique([queueId, number])
+  @@unique([queueId, myCallingToken])
   @@map("tickets")
 }
 
 model Agent {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String?  // Opcional para login com Google
-  googleId  String?  @unique // Para login com Google
-  role      AgentRole @default(ATTENDANT)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  callLogs CallLog[]
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String
+  password    String?
+  googleId    String?   @unique
+  role        AgentRole @default(OPERADOR)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenantId    String
+  cpf         String    @unique
+  isDefault   Boolean   @default(false)
+  isProtected Boolean   @default(false)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  callLogs    CallLog[]
 
   @@map("agents")
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String
-  googleId     String   @unique
-  picture      String?  // URL da foto do Google
-  phone        String?  // Pode ser preenchido depois
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Histórico de tickets (para facilitar busca)
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  googleId      String?  @unique
+  picture       String?
+  phone         String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  cpf           String?  @unique
+  password      String?
+  isDefault     Boolean  @default(false)
+  isProtected   Boolean  @default(false)
   ticketHistory Ticket[] @relation("UserTickets")
 
   @@map("users")
 }
 
 model Counter {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
   number    Int
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  callLogs CallLog[]
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  tenantId  String
+  callLogs  CallLog[]
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, number])
   @@map("counters")
@@ -134,19 +123,15 @@ model CallLog {
   id          String     @id @default(cuid())
   action      CallAction
   calledAt    DateTime   @default(now())
-  serviceTime Int?       // em segundos (quando completado)
-
-  ticketId  String
-  ticket    Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-
-  queueId String
-  queue   Queue  @relation(fields: [queueId], references: [id], onDelete: Cascade)
-
-  agentId String
-  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  counterId String
-  counter   Counter @relation(fields: [counterId], references: [id], onDelete: Cascade)
+  serviceTime Int?
+  ticketId    String
+  queueId     String
+  agentId     String
+  counterId   String
+  agent       Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  counter     Counter    @relation(fields: [counterId], references: [id], onDelete: Cascade)
+  queue       Queue      @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  ticket      Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@map("call_logs")
 }
@@ -167,9 +152,10 @@ enum TicketStatus {
 }
 
 enum AgentRole {
-  ATTENDANT
-  ADMIN
-  MANAGER
+  OPERADOR
+  GERENTE
+  GESTOR
+  ADMINISTRADOR
 }
 
 enum CallAction {
@@ -180,73 +166,46 @@ enum CallAction {
   NO_SHOW
 }
 
-model Notification {
-  id        String   @id @default(cuid())
-  type      NotificationType
-  title     String
-  message   String
-  data      Json?    // Dados extras (queueId, ticketNumber, etc)
-  
-  // Destinatário
-  userId    String?  // Para usuários logados
-  clientPhone String? // Para clientes sem login
-  clientEmail String? // Para clientes sem login
-  
-  // Status de entrega
-  status    NotificationStatus @default(PENDING)
-  sentAt    DateTime?
-  readAt    DateTime?
-  
-  // Canais de entrega
-  channels  NotificationChannel[] // WebSocket, Push, SMS, Email
-  
-  // Retry
-  attempts  Int      @default(0)
-  maxAttempts Int    @default(3)
-  nextRetry DateTime?
-  
-  // Metadata
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  expiresAt DateTime? // TTL para notificações
-  
-  @@map("notifications")
+model CorporateUser {
+  id          String           @id @default(cuid())
+  email       String           @unique
+  name        String
+  password    String?
+  googleId    String?          @unique
+  role        CorporateUserRole @default(OPERADOR)
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  tenantId    String
+  cpf         String           @unique
+  phone       String?
+  department  String?
+  position    String?
+  isDefault   Boolean          @default(false)
+  isProtected Boolean          @default(false)
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permissions CorporateUserPermission[]
+
+  @@map("corporate_users")
 }
 
-model NotificationChannel {
-  id             String @id @default(cuid())
-  notificationId String
-  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
-  
-  channel        String // 'websocket', 'push', 'sms', 'email'
-  status         DeliveryStatus @default(PENDING)
-  sentAt         DateTime?
-  errorMessage   String?
-  attempts       Int @default(0)
-  
-  @@map("notification_channels")
+model CorporateUserPermission {
+  id              String        @id @default(cuid())
+  corporateUserId String
+  resource        String
+  action          String
+  granted         Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  corporateUser   CorporateUser @relation(fields: [corporateUserId], references: [id], onDelete: Cascade)
+
+  @@unique([corporateUserId, resource, action])
+  @@map("corporate_user_permissions")
 }
 
-enum NotificationType {
-  TICKET_CALLED      // Sua senha foi chamada
-  TICKET_UPDATED     // Posição na fila mudou
-  QUEUE_STATUS       // Fila pausada/retomada
-  APPOINTMENT_REMINDER // Lembrete (futuro)
-}
-
-enum NotificationStatus {
-  PENDING
-  SENT
-  DELIVERED
-  READ
-  FAILED
-  EXPIRED
-}
-
-enum DeliveryStatus {
-  PENDING
-  SENT
-  DELIVERED
-  FAILED
-  EXPIRED
+enum CorporateUserRole {
+  OPERADOR
+  GERENTE
+  GESTOR
+  ADMINISTRADOR
 }

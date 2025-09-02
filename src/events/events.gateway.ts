@@ -7,6 +7,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { QueueType } from '@prisma/client';
 
 @WebSocketGateway({
   cors: {
@@ -73,6 +74,98 @@ export class EventsGateway {
     }
   }
 
+  @SubscribeMessage('join-tenant-current-calling-token')
+  handleJoinTenantCurrentCallingToken(
+    @MessageBody() data: { tenantId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.join(`tenant-${data.tenantId}`);
+    this.logger.log(
+      `Cliente ${client.id} entrou para receber atualizações de currentCallingToken do tenant ${data.tenantId}`,
+    );
+  }
+
+  @SubscribeMessage('join-queue-type-current-calling-token')
+  handleJoinQueueTypeCurrentCallingToken(
+    @MessageBody() data: { queueType: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.join(`queue-type-${data.queueType}`);
+    this.logger.log(
+      `Cliente ${client.id} entrou para receber atualizações de currentCallingToken do tipo de fila ${data.queueType}`,
+    );
+  }
+
+  @SubscribeMessage('join-ticket')
+  handleJoinTicket(
+    @MessageBody() data: { ticketId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.join(`ticket-${data.ticketId}`);
+    this.logger.log(
+      `Cliente ${client.id} entrou para receber atualizações do ticket ${data.ticketId}`,
+    );
+  }
+
+  @SubscribeMessage('leave-ticket')
+  handleLeaveTicket(
+    @MessageBody() data: { ticketId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.leave(`ticket-${data.ticketId}`);
+    this.logger.log(
+      `Cliente ${client.id} saiu das atualizações do ticket ${data.ticketId}`,
+    );
+  }
+
+  @SubscribeMessage('join-queue-client')
+  handleJoinQueueClient(
+    @MessageBody() data: { queueId: string; clientIdentifier?: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.join(`queue-client-${data.queueId}`);
+    if (data.clientIdentifier) {
+      client.join(`client-${data.clientIdentifier}`);
+    }
+    this.logger.log(
+      `Cliente ${client.id} entrou na fila ${data.queueId} para receber atualizações`,
+    );
+  }
+
+  @SubscribeMessage('leave-queue-client')
+  handleLeaveQueueClient(
+    @MessageBody() data: { queueId: string; clientIdentifier?: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.leave(`queue-client-${data.queueId}`);
+    if (data.clientIdentifier) {
+      client.leave(`client-${data.clientIdentifier}`);
+    }
+    this.logger.log(`Cliente ${client.id} saiu da fila ${data.queueId}`);
+  }
+
+  @SubscribeMessage('leave-tenant-current-calling-token')
+  handleLeaveTenantCurrentCallingToken(
+    @MessageBody() data: { tenantId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.leave(`tenant-${data.tenantId}`);
+    this.logger.log(
+      `Cliente ${client.id} saiu das atualizações de currentCallingToken do tenant ${data.tenantId}`,
+    );
+  }
+
+  @SubscribeMessage('leave-queue-type-current-calling-token')
+  handleLeaveQueueTypeCurrentCallingToken(
+    @MessageBody() data: { queueType: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.leave(`queue-type-${data.queueType}`);
+    this.logger.log(
+      `Cliente ${client.id} saiu das atualizações de currentCallingToken do tipo de fila ${data.queueType}`,
+    );
+  }
+
   emitQueueUpdate(queueId: string, data: any) {
     this.server.to(`queue-${queueId}`).emit('queue-updated', data);
   }
@@ -91,5 +184,30 @@ export class EventsGateway {
 
   emitClientTicketCalled(clientIdentifier: string, data: any) {
     this.server.to(`client-${clientIdentifier}`).emit('ticket-called', data);
+  }
+
+  emitCurrentCallingTokenUpdate(
+    tenantId: string,
+    queueType: QueueType,
+    data: any,
+  ) {
+    this.server
+      .to(`tenant-${tenantId}`)
+      .to(`queue-type-${queueType}`)
+      .emit('current-calling-token-updated', data);
+  }
+
+  emitTicketCalledToClient(ticketId: string, data: any) {
+    this.server.to(`ticket-${ticketId}`).emit('ticket-called', data);
+  }
+
+  emitQueueStatusToClients(queueId: string, data: any) {
+    this.server
+      .to(`queue-client-${queueId}`)
+      .emit('queue-status-updated', data);
+  }
+
+  emitTicketStatusToClient(ticketId: string, data: any) {
+    this.server.to(`ticket-${ticketId}`).emit('ticket-status-updated', data);
   }
 }

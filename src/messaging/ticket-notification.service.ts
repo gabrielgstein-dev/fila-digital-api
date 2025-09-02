@@ -4,7 +4,7 @@ import { ClientProxy } from '@nestjs/microservices';
 interface TicketCalledMessage {
   ticketId: string;
   queueName: string;
-  ticketNumber: number;
+  ticketNumber: string;
   clientPhone?: string;
   clientEmail?: string;
   userId?: string;

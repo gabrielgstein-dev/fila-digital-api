@@ -19,6 +19,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { LoginDto } from '../common/dto/login.dto';
+import { CorporateUserLoginDto } from '../common/dto/corporate-user-login.dto';
 import { AuthThrottleGuard } from './guards/auth-throttle.guard';
 import { Response } from 'express';
 
@@ -31,6 +32,24 @@ export class AuthController {
   @UseGuards(AuthThrottleGuard)
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 tentativas por minuto
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Login de usuário corporativo' })
+  @ApiResponse({ status: 200, description: 'Login realizado com sucesso' })
+  @ApiResponse({ status: 401, description: 'Credenciais inválidas' })
+  @ApiResponse({
+    status: 429,
+    description: 'Muitas tentativas - tente novamente em alguns minutos',
+  })
+  async login(@Body() loginDto: CorporateUserLoginDto) {
+    return this.authService.corporateUserLogin(
+      loginDto.email,
+      loginDto.password,
+    );
+  }
+
+  @Post('agent/login')
+  @UseGuards(AuthThrottleGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 tentativas por minuto
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login de atendente/gestor' })
   @ApiResponse({ status: 200, description: 'Login realizado com sucesso' })
   @ApiResponse({ status: 401, description: 'Credenciais inválidas' })
@@ -38,8 +57,23 @@ export class AuthController {
     status: 429,
     description: 'Muitas tentativas - tente novamente em alguns minutos',
   })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto.email, loginDto.password);
+  async agentLogin(@Body() loginDto: LoginDto) {
+    return this.authService.login(loginDto.cpf, loginDto.password);
+  }
+
+  @Post('client/login')
+  @UseGuards(AuthThrottleGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 tentativas por minuto
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Login de cliente' })
+  @ApiResponse({ status: 200, description: 'Login realizado com sucesso' })
+  @ApiResponse({ status: 401, description: 'Credenciais inválidas' })
+  @ApiResponse({
+    status: 429,
+    description: 'Muitas tentativas - tente novamente em alguns minutos',
+  })
+  async clientLogin(@Body() loginDto: LoginDto) {
+    return this.authService.clientLogin(loginDto.cpf, loginDto.password);
   }
 
   @Get('google')
@@ -63,7 +97,11 @@ export class AuthController {
       // Redirecionar baseado no tipo de usuário
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-      if (result.userType === 'agent') {
+      if (result.userType === 'corporate_user') {
+        // Usuário corporativo -> Dashboard corporativo
+        const redirectUrl = `${frontendUrl}/corporate-dashboard?token=${result.access_token}&type=corporate_user`;
+        return res.redirect(redirectUrl);
+      } else if (result.userType === 'agent') {
         // Agente -> Dashboard administrativo
         const redirectUrl = `${frontendUrl}/dashboard?token=${result.access_token}&type=agent`;
         return res.redirect(redirectUrl);
@@ -86,9 +124,10 @@ export class AuthController {
   })
   @ApiResponse({ status: 200, description: 'Login realizado com sucesso' })
   @ApiResponse({ status: 401, description: 'Token Google inválido' })
-  async googleMobileLogin(@Body() body: { idToken: string }) {
-    // TODO: Implementar validação de ID Token do Google
-    // Para simplificar agora, usar o callback web
-    throw new Error('Implementar validação de ID Token');
+  async googleMobileLogin(@Body() body: { access_token: string; user: any }) {
+    return this.authService.validateGoogleTokenAndLogin(
+      body.access_token,
+      body.user,
+    );
   }
 }

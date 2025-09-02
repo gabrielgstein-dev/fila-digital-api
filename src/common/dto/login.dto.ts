@@ -1,10 +1,11 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsString, MinLength, Matches } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class LoginDto {
-  @ApiProperty({ description: 'Email do usuário' })
-  @IsEmail()
-  email: string;
+  @ApiProperty({ description: 'CPF do usuário (apenas números)' })
+  @IsString()
+  @Matches(/^\d{11}$/, { message: 'CPF deve conter exatamente 11 dígitos numéricos' })
+  cpf: string;
 
   @ApiProperty({ description: 'Senha do usuário' })
   @IsString()

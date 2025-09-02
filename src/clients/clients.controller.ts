@@ -14,7 +14,7 @@ import {
 } from '@nestjs/swagger';
 import { ClientsService } from './clients.service';
 import { CurrentClient } from '../auth/decorators/current-client.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('clients')
@@ -23,8 +23,8 @@ export class ClientsController {
   constructor(private readonly clientsService: ClientsService) {}
 
   @Get('my-tickets')
-  @UseGuards(JwtAuthGuard)
-  @Public() // Permitir acesso sem autenticação também
+  @UseGuards(TenantAuthGuard)
+  @Public()
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Buscar todas as senhas ativas de um cliente',
@@ -62,7 +62,7 @@ export class ClientsController {
             type: 'object',
             properties: {
               id: { type: 'string' },
-              number: { type: 'number' },
+              myCallingToken: { type: 'string' },
               status: { type: 'string' },
               priority: { type: 'number' },
               position: { type: 'number' },
@@ -97,7 +97,6 @@ export class ClientsController {
     @Query('email') email?: string,
     @CurrentClient() client?: any,
   ) {
-    // Se cliente logado com Google, usar o ID do usuário
     if (client && client.userType === 'client') {
       return this.clientsService.findClientTickets(
         client.phone,
@@ -106,7 +105,6 @@ export class ClientsController {
       );
     }
 
-    // Se não logado, exigir telefone ou email
     if (!phone && !email) {
       throw new BadRequestException(
         'É necessário informar telefone ou email, ou fazer login com Google',
@@ -117,8 +115,8 @@ export class ClientsController {
   }
 
   @Get('dashboard')
-  @UseGuards(JwtAuthGuard)
-  @Public() // Permitir acesso sem autenticação também
+  @UseGuards(TenantAuthGuard)
+  @Public()
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Dashboard consolidado do cliente',
@@ -178,7 +176,6 @@ export class ClientsController {
     @Query('email') email?: string,
     @CurrentClient() client?: any,
   ) {
-    // Se cliente logado com Google, usar o ID do usuário
     if (client && client.userType === 'client') {
       return this.clientsService.getClientDashboard(
         client.phone,
@@ -187,7 +184,6 @@ export class ClientsController {
       );
     }
 
-    // Se não logado, exigir telefone ou email
     if (!phone && !email) {
       throw new BadRequestException(
         'É necessário informar telefone ou email, ou fazer login com Google',
@@ -198,6 +194,7 @@ export class ClientsController {
   }
 
   @Get('queue-metrics')
+  @Public()
   @ApiOperation({
     summary: 'Métricas de velocidade de atendimento em tempo real',
     description:
@@ -261,11 +258,14 @@ export class ClientsController {
     },
   })
   async getQueueMetrics(@Query('queueId') queueId: string) {
+    if (!queueId) {
+      throw new BadRequestException('queueId é obrigatório');
+    }
     return this.clientsService.getQueueRealTimeMetrics(queueId);
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(TenantAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Informações do cliente logado',

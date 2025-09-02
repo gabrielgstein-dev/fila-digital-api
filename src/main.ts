@@ -38,14 +38,63 @@ async function bootstrap() {
   console.log('✅ [STEP 4] Helmet configurado!');
 
   console.log('🌐 [STEP 5] Configurando CORS...');
-  app.enableCors({
-    origin: configService.get('CORS_ORIGIN') || 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+
+  // Configuração de CORS baseada no ambiente
+  const nodeEnv = configService.get('NODE_ENV') || 'development';
+  let corsOrigins: string[] | boolean;
+
+  if (nodeEnv === 'production') {
+    // Em produção, usar apenas domínios específicos e seguros
+    const productionOrigins = configService.get('CORS_ORIGIN') || '';
+    if (productionOrigins) {
+      corsOrigins = productionOrigins.split(',').map((origin) => origin.trim());
+    } else {
+      // Fallback para domínios padrão de produção
+      corsOrigins = [
+        'https://fila-digital.com',
+        'https://www.fila-digital.com',
+        'https://app.fila-digital.com',
+      ];
+    }
+
+    // Validar que todas as origens são HTTPS em produção
+    if (Array.isArray(corsOrigins)) {
+      corsOrigins = corsOrigins.filter(
+        (origin) =>
+          origin.startsWith('https://') &&
+          !origin.includes('localhost') &&
+          !origin.includes('127.0.0.1'),
+      );
+    }
+
+    console.log('🌐 [STEP 5] PRODUÇÃO: Origens CORS seguras:', corsOrigins);
+  } else {
+    // Em desenvolvimento local, liberar TODOS os CORS para facilitar testes
+    corsOrigins = true; // true = permite todas as origens
+    console.log(
+      '🌐 [STEP 5] DESENVOLVIMENTO LOCAL: CORS liberado para TODAS as origens',
+    );
+  }
+
+  // Configuração de CORS baseada no ambiente
+  const corsConfig = {
+    origin: corsOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'Accept',
+      'Origin',
+    ],
     credentials: false,
-    maxAge: 86400,
-  });
-  console.log('✅ [STEP 5] CORS configurado!');
+    maxAge: nodeEnv === 'production' ? 86400 : 3600, // 24h em produção, 1h em dev
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+  };
+
+  app.enableCors(corsConfig);
+  console.log('✅ [STEP 5] CORS configurado com segurança para', nodeEnv);
 
   console.log('🔧 [STEP 6] Configurando pipes globais...');
   app.useGlobalPipes(

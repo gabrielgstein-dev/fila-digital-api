@@ -5,13 +5,17 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { TenantsModule } from './tenants/tenants.module';
 import { QueuesModule } from './queues/queues.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { AuthModule } from './auth/auth.module';
 import { EventsModule } from './events/events.module';
 import { ClientsModule } from './clients/clients.module';
 import { MessagingModule } from './messaging/messaging.module';
+import { AgentsModule } from './agents/agents.module';
+import { CorporateUsersModule } from './corporate-users/corporate-users.module';
 import { SanitizeInterceptor } from './common/interceptors/sanitize.interceptor';
+import { TenantFilterInterceptor } from './common/interceptors/tenant-filter.interceptor';
 
 @Module({
   imports: [
@@ -21,27 +25,30 @@ import { SanitizeInterceptor } from './common/interceptors/sanitize.interceptor'
     ThrottlerModule.forRoot([
       {
         name: 'short',
-        ttl: 1000, // 1 segundo
-        limit: 3, // 3 requests por segundo
+        ttl: 1000,
+        limit: 100, // Aumentado para testes
       },
       {
         name: 'medium',
-        ttl: 10000, // 10 segundos
-        limit: 20, // 20 requests por 10 segundos
+        ttl: 10000,
+        limit: 1000, // Aumentado para testes
       },
       {
         name: 'long',
-        ttl: 60000, // 1 minuto
-        limit: 100, // 100 requests por minuto
+        ttl: 60000,
+        limit: 10000, // Aumentado para testes
       },
     ]),
     PrismaModule,
+    TenantsModule,
     AuthModule.forRoot(),
     QueuesModule,
     TicketsModule,
     EventsModule,
     ClientsModule,
     MessagingModule,
+    AgentsModule,
+    CorporateUsersModule,
   ],
   controllers: [AppController],
   providers: [
@@ -53,6 +60,10 @@ import { SanitizeInterceptor } from './common/interceptors/sanitize.interceptor'
     {
       provide: APP_INTERCEPTOR,
       useClass: SanitizeInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantFilterInterceptor,
     },
   ],
 })

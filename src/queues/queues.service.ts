@@ -120,7 +120,7 @@ export class QueuesService {
       await this.ticketNotificationService.notifyTicketCalled({
         ticketId: updatedTicket.id,
         queueName: updatedTicket.queue.name,
-        ticketNumber: updatedTicket.number,
+        ticketNumber: updatedTicket.myCallingToken,
         clientPhone: updatedTicket.clientPhone,
         clientEmail: updatedTicket.clientEmail,
         userId: updatedTicket.userId,
@@ -250,7 +250,7 @@ export class QueuesService {
           queueType: queue.queueType,
           capacity: queue.capacity,
           avgServiceTime: queue.avgServiceTime,
-          currentNumber: lastCalledTicket?.number || 0,
+          currentNumber: lastCalledTicket?.myCallingToken || 'Aguardando...',
           totalWaiting: queue.tickets.filter(
             (t) => t.status === TicketStatus.WAITING,
           ).length,
@@ -259,7 +259,7 @@ export class QueuesService {
           ).length,
           tickets: queue.tickets.map((ticket) => ({
             id: ticket.id,
-            number: ticket.number,
+            myCallingToken: ticket.myCallingToken,
             clientName: ticket.clientName,
             clientPhone: ticket.clientPhone,
             clientEmail: ticket.clientEmail,
@@ -303,5 +303,74 @@ export class QueuesService {
     const position =
       waitingTickets.findIndex((t) => t.id === currentTicket.id) + 1;
     return position > 0 ? position : 0;
+  }
+
+  async generateQRCode(queueId: string) {
+    const queue = await this.prisma.queue.findUnique({
+      where: { id: queueId },
+      include: { tenant: true },
+    });
+
+    if (!queue) {
+      throw new NotFoundException('Fila não encontrada');
+    }
+
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const qrCodeUrl = `${baseUrl}/queue/${queue.id}`;
+
+    const qrCodeDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCodeUrl)}`;
+
+    return {
+      queueId: queue.id,
+      queueName: queue.name,
+      tenantName: queue.tenant.name,
+      qrCodeUrl: qrCodeDataUrl,
+      directUrl: qrCodeUrl,
+      createdAt: new Date(),
+    };
+  }
+
+  async recall(tenantId: string, queueId: string) {
+    const queue = await this.findOne(tenantId, queueId);
+
+    const lastCalledTicket = await this.prisma.ticket.findFirst({
+      where: {
+        queueId: queue.id,
+        status: TicketStatus.CALLED,
+      },
+      orderBy: { calledAt: 'desc' },
+    });
+
+    if (!lastCalledTicket) {
+      throw new NotFoundException('Nenhum ticket foi chamado ainda nesta fila');
+    }
+
+    const updatedTicket = await this.prisma.ticket.update({
+      where: { id: lastCalledTicket.id },
+      data: {
+        calledAt: new Date(),
+      },
+      include: {
+        queue: {
+          include: {
+            tenant: true,
+          },
+        },
+      },
+    });
+
+    await this.ticketNotificationService.notifyTicketCalled({
+      ticketId: updatedTicket.id,
+      queueName: updatedTicket.queue.name,
+      ticketNumber: updatedTicket.myCallingToken,
+      clientPhone: updatedTicket.clientPhone,
+      clientEmail: updatedTicket.clientEmail,
+      userId: updatedTicket.userId,
+    });
+
+    return {
+      message: 'Ticket rechamado com sucesso',
+      ticket: updatedTicket,
+    };
   }
 }

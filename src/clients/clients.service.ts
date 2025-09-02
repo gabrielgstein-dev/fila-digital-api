@@ -60,7 +60,7 @@ export class ClientsService {
 
         return {
           id: ticket.id,
-          number: ticket.number,
+          myCallingToken: ticket.myCallingToken,
           status: ticket.status,
           priority: ticket.priority,
           position,
@@ -267,7 +267,7 @@ export class ClientsService {
     return position > 0 ? position : 0;
   }
 
-  private async getCurrentQueueNumber(queueId: string): Promise<number> {
+  private async getCurrentQueueNumber(queueId: string): Promise<string> {
     const lastCalled = await this.prisma.ticket.findFirst({
       where: {
         queueId,
@@ -276,7 +276,7 @@ export class ClientsService {
       orderBy: { calledAt: 'desc' },
     });
 
-    return lastCalled?.number || 0;
+    return lastCalled?.myCallingToken || 'Aguardando...';
   }
 
   private async calculateUpdatedEstimatedTime(
@@ -299,23 +299,40 @@ export class ClientsService {
 
   private async calculateRealTimeMetrics(tickets: any[]) {
     // Calcular métricas baseadas em todas as filas do cliente
-    const queueIds = [...new Set(tickets.map((t) => t.queue.id))];
+    const queueIds = [
+      ...new Set(tickets.map((t) => t.queue?.id).filter(Boolean)),
+    ];
+
+    if (queueIds.length === 0) {
+      return {
+        currentServiceSpeed: 0,
+        avgTimeSinceLastCall: 0,
+        trendDirection: 'stable',
+      };
+    }
 
     let totalServiceSpeed = 0;
     let avgTimeSinceLastCall = 0;
     const trendCounts = { accelerating: 0, stable: 0, slowing: 0 };
 
     for (const queueId of queueIds) {
-      const queueMetrics = await this.getQueueRealTimeMetrics(queueId);
-      totalServiceSpeed += queueMetrics.currentMetrics.serviceSpeed;
+      if (!queueId) continue; // Pular se queueId for undefined
 
-      if (queueMetrics.currentMetrics.timeSinceLastCall) {
-        avgTimeSinceLastCall += queueMetrics.currentMetrics.timeSinceLastCall;
+      try {
+        const queueMetrics = await this.getQueueRealTimeMetrics(queueId);
+        totalServiceSpeed += queueMetrics.currentMetrics.serviceSpeed;
+
+        if (queueMetrics.currentMetrics.timeSinceLastCall) {
+          avgTimeSinceLastCall += queueMetrics.currentMetrics.timeSinceLastCall;
+        }
+
+        trendCounts[
+          queueMetrics.currentMetrics.trendDirection as keyof typeof trendCounts
+        ]++;
+      } catch (error) {
+        // Log do erro mas continuar com outras filas
+        console.warn(`Erro ao calcular métricas para fila ${queueId}:`, error);
       }
-
-      trendCounts[
-        queueMetrics.currentMetrics.trendDirection as keyof typeof trendCounts
-      ]++;
     }
 
     // Tendência geral

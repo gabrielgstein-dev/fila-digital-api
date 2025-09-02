@@ -18,8 +18,27 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    // Verificar se é agente ou cliente
-    if (payload.userType === 'agent') {
+    // Verificar se é usuário corporativo, agente ou cliente
+    if (payload.userType === 'corporate_user') {
+      const corporateUser = await this.prisma.corporateUser.findUnique({
+        where: { id: payload.sub },
+        include: { tenant: true },
+      });
+
+      if (!corporateUser || !corporateUser.isActive) {
+        throw new UnauthorizedException();
+      }
+
+      return {
+        id: corporateUser.id,
+        email: corporateUser.email,
+        name: corporateUser.name,
+        role: corporateUser.role,
+        tenantId: corporateUser.tenantId,
+        userType: 'corporate_user',
+        tenant: corporateUser.tenant,
+      };
+    } else if (payload.userType === 'agent') {
       const agent = await this.prisma.agent.findUnique({
         where: { id: payload.sub },
         include: { tenant: true },
@@ -32,10 +51,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       return {
         id: agent.id,
         email: agent.email,
+        name: agent.name,
         role: agent.role,
         tenantId: agent.tenantId,
-        tenant: agent.tenant,
         userType: 'agent',
+        tenant: agent.tenant,
       };
     } else if (payload.userType === 'client') {
       const user = await this.prisma.user.findUnique({
@@ -50,8 +70,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         id: user.id,
         email: user.email,
         name: user.name,
-        picture: user.picture,
-        phone: user.phone,
         userType: 'client',
       };
     }
