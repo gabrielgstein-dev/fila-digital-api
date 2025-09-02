@@ -1,0 +1,58 @@
+# Dockerfile para PRODUÇÃO na Cloud Run
+FROM node:18-alpine AS builder
+
+# Instalar dependências de build
+RUN apk add --no-cache python3 make g++
+
+# Definir diretório de trabalho
+WORKDIR /app
+
+# Copiar arquivos de dependências
+COPY package*.json ./
+COPY pnpm-lock.yaml ./
+
+# Instalar pnpm
+RUN npm install -g pnpm
+
+# Instalar dependências
+RUN pnpm install --frozen-lockfile
+
+# Copiar código fonte
+COPY . .
+
+# Build da aplicação
+RUN pnpm run build
+
+# Remover dependências de desenvolvimento
+RUN pnpm prune --prod
+
+# Imagem de produção
+FROM node:18-alpine AS production
+
+# Criar usuário não-root
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nestjs -u 1001
+
+# Instalar pnpm
+RUN npm install -g pnpm
+
+# Definir diretório de trabalho
+WORKDIR /app
+
+# Copiar dependências e código buildado
+COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nestjs:nodejs /app/package*.json ./
+
+# Expor porta (Cloud Run usa 8080 por padrão)
+EXPOSE 8080
+
+# Mudar para usuário não-root
+USER nestjs
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8080/api/v1/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+
+# Comando de inicialização
+CMD ["node", "dist/main"]
