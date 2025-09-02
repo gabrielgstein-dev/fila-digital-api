@@ -1,0 +1,48 @@
+{
+  "name": "@fila/igniter-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP Server reutilizável para projetos Igniter.js",
+  "main": "dist/index.js",
+  "bin": {
+    "igniter-mcp": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/cli.ts",
+    "start": "node dist/cli.js",
+    "test": "jest"
+  },
+  "keywords": [
+    "mcp",
+    "igniter",
+    "cursor",
+    "ai",
+    "api",
+    "typescript"
+  ],
+  "author": "Fila Digital Team",
+  "license": "MIT",
+  "dependencies": {
+    "@igniter-js/core": "^0.3.0",
+    "@igniter-js/mcp-server": "^0.0.56"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.0.0",
+    "jest": "^29.0.0"
+  },
+  "files": [
+    "dist/**/*",
+    "templates/**/*",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fila-digital/igniter-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fila-digital/igniter-mcp-server/issues"
+  },
+  "homepage": "https://github.com/fila-digital/igniter-mcp-server#readme"
+}
