@@ -194,4 +194,3 @@ export class AgentsController {
     return this.agentsService.remove(id, currentAgentId);
   }
 }
-
