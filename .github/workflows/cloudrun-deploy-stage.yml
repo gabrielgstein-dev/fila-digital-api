@@ -33,9 +33,12 @@ jobs:
           echo "Tag detectada: $TAG_NAME"
           
           if [[ "$TAG_NAME" == *"-stage" ]]; then
+            # Sanitizar tag para Cloud Run (remover hífens e caracteres especiais)
+            SANITIZED_TAG=$(echo "$TAG_NAME" | sed 's/-/stage/g' | sed 's/[^a-z0-9]//g')
             echo "should_deploy=true" >> $GITHUB_OUTPUT
             echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
-            echo "✅ Deploy será executado para versão: $TAG_NAME"
+            echo "sanitized_tag=$SANITIZED_TAG" >> $GITHUB_OUTPUT
+            echo "✅ Deploy será executado para versão: $TAG_NAME (tag sanitizada: $SANITIZED_TAG)"
           else
             echo "should_deploy=false" >> $GITHUB_OUTPUT
             echo "❌ Tag não contém '-stage', deploy cancelado"
@@ -43,9 +46,11 @@ jobs:
         elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
           # Manual dispatch
           TAG_NAME="${{ github.event.inputs.tag }}"
+          SANITIZED_TAG=$(echo "$TAG_NAME" | sed 's/-/stage/g' | sed 's/[^a-z0-9]//g')
           echo "should_deploy=true" >> $GITHUB_OUTPUT
           echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "✅ Deploy manual para versão: $TAG_NAME"
+          echo "sanitized_tag=$SANITIZED_TAG" >> $GITHUB_OUTPUT
+          echo "✅ Deploy manual para versão: $TAG_NAME (tag sanitizada: $SANITIZED_TAG)"
         else
           echo "should_deploy=false" >> $GITHUB_OUTPUT
           echo "❌ Evento não suportado para deploy"
@@ -151,7 +156,7 @@ jobs:
           --execution-environment gen2 \
           --cpu-boost \
           --no-traffic \
-          --tag "v${{ steps.version_check.outputs.version }}" \
+          --tag "${{ steps.version_check.outputs.sanitized_tag }}" \
           --set-env-vars "^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render##DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}##JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
         
         echo "📊 Aguardando deploy estabilizar..."

@@ -45,6 +45,8 @@
     "version:prod-deploy": "node -e \"const pkg = require('./package.json'); const version = pkg.version; require('child_process').execSync('git add package.json', {stdio: 'inherit'}); require('child_process').execSync('git commit -m \\\"chore: release version ' + version + '\\\"', {stdio: 'inherit'}); require('child_process').execSync('git tag ' + version, {stdio: 'inherit'}); require('child_process').execSync('git push origin main', {stdio: 'inherit'}); require('child_process').execSync('git push origin ' + version, {stdio: 'inherit'});\""
   },
   "dependencies": {
+    "@igniter-js/core": "^0.2.80",
+    "@igniter-js/mcp-server": "^0.0.56",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
     "@nestjs/core": "^10.0.0",
