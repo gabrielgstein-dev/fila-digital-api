@@ -33,4 +33,4 @@ RUN pnpm run build
 EXPOSE 8080
 
 # Comando para iniciar a aplicação
-CMD ["node", "dist/main.js"] 
+CMD ["node", "dist/main"] 

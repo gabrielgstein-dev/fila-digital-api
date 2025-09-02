@@ -35,4 +35,24 @@ export class AppController {
       timestamp: new Date().toISOString(),
     };
   }
+
+  @Get('version')
+  @ApiOperation({
+    summary: 'Informações de Versão',
+    description: 'Retorna informações sobre a versão da API',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Informações de versão',
+  })
+  getVersion() {
+    const packageJson = require('../package.json');
+    return {
+      name: packageJson.name,
+      version: packageJson.version,
+      environment: process.env.NODE_ENV || 'development',
+      nodeVersion: process.version,
+      timestamp: new Date().toISOString(),
+    };
+  }
 }

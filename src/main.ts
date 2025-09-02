@@ -113,10 +113,18 @@ async function bootstrap() {
   console.log('✅ [STEP 7] Prefixo configurado!');
 
   console.log('📚 [STEP 8] Configurando Swagger...');
+
+  // Obter versão do package.json
+  const packageJson = require('../package.json');
+  const version = packageJson.version;
+  const buildTime = new Date().toISOString();
+
   const config = new DocumentBuilder()
     .setTitle('Fila Digital API')
-    .setDescription('API para sistema de fila digital')
-    .setVersion('1.0')
+    .setDescription(
+      `API para sistema de fila digital\n\n**Versão:** ${version}\n**Ambiente:** ${nodeEnv}\n**Build:** ${buildTime}`,
+    )
+    .setVersion(version)
     .addBearerAuth()
     .build();
 
