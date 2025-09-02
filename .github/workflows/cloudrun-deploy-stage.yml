@@ -34,7 +34,7 @@ jobs:
           
           if [[ "$TAG_NAME" == *"-stage" ]]; then
             # Sanitizar tag para Cloud Run (remover hífens e caracteres especiais)
-            SANITIZED_TAG=$(echo "$TAG_NAME" | sed 's/-/stage/g' | sed 's/[^a-z0-9]//g')
+            SANITIZED_TAG=$(echo "$TAG_NAME" | sed 's/-stage$//' | sed 's/\./-/g' | sed 's/[^a-z0-9-]//g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
             echo "should_deploy=true" >> $GITHUB_OUTPUT
             echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
             echo "sanitized_tag=$SANITIZED_TAG" >> $GITHUB_OUTPUT
@@ -46,7 +46,7 @@ jobs:
         elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
           # Manual dispatch
           TAG_NAME="${{ github.event.inputs.tag }}"
-          SANITIZED_TAG=$(echo "$TAG_NAME" | sed 's/-/stage/g' | sed 's/[^a-z0-9]//g')
+          SANITIZED_TAG=$(echo "$TAG_NAME" | sed 's/-stage$//' | sed 's/\./-/g' | sed 's/[^a-z0-9-]//g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
           echo "should_deploy=true" >> $GITHUB_OUTPUT
           echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "sanitized_tag=$SANITIZED_TAG" >> $GITHUB_OUTPUT
@@ -141,7 +141,12 @@ jobs:
     - name: Deploy to Cloud Run
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
-        echo "🚀 Fazendo deploy forçado com nova imagem..."
+        echo "🚀 Fazendo deploy com nova imagem..."
+        echo "🔍 Debug Info:"
+        echo "SERVICE_NAME: $SERVICE_NAME"
+        echo "SANITIZED_TAG: ${{ steps.version_check.outputs.sanitized_tag }}"
+        echo "GCP_PROJECT_ID: $GCP_PROJECT_ID"
+        echo "GCP_REGION: $GCP_REGION"
         gcloud run deploy "$SERVICE_NAME" \
           --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
           --region "$GCP_REGION" \
@@ -155,17 +160,8 @@ jobs:
           --timeout 3600 \
           --execution-environment gen2 \
           --cpu-boost \
-          --no-traffic \
           --tag "${{ steps.version_check.outputs.sanitized_tag }}" \
-          --set-env-vars "^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render##DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}##JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
-        
-        echo "📊 Aguardando deploy estabilizar..."
-        sleep 10
-        
-        echo "🔄 Direcionando 100% do tráfego para nova versão..."
-        gcloud run services update-traffic "$SERVICE_NAME" \
-          --to-latest \
-          --region "$GCP_REGION"
+          --set-env-vars "NODE_ENV=${{ secrets.NODE_ENV_STAGE }},CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com,DATABASE_PROVIDER=render,DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }},JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }},RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
 
     - name: Get service URL
       if: steps.version_check.outputs.should_deploy == 'true'
