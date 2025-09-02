@@ -8,6 +8,9 @@ dist
 .env.test
 .env.production
 .env.qa
+.env.*
+!.env.example
+!.env.render.example
 
 # Logs
 logs
@@ -28,12 +31,24 @@ out
 # Google Cloud keys
 github-actions-*.json
 service-account-*.json
+*.json
+!package.json
+!package-lock.json
+!pnpm-lock.yaml
+!tsconfig*.json
+!jest*.json
+!postman-tests.json
 
 # IDE
 .vscode
 .idea
 *.swp
 *.swo
+*~
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
 
 # OS
 .DS_Store
@@ -41,7 +56,84 @@ Thumbs.db
 
 # Docker
 .dockerignore.bak
+docker-compose.override.yml
+.docker/
 
 # Temporary files
 tmp
 temp
+*.tmp
+*.temp
+*.backup
+*.bak
+*.orig
+*.rej
+
+# Test cache and coverage
+test/.jest-cache
+.jest-cache
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Security and certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+.tmp/
+.temp/
