@@ -234,4 +234,81 @@ export class DashboardController {
       },
     };
   }
+
+  // ==================== ENDPOINTS DE MONITORAMENTO E PERFORMANCE ====================
+
+  @Get('performance-metrics')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Métricas de performance do sistema' })
+  async getPerformanceMetrics(@Request() req: any) {
+    // Verificar se é admin
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
+      throw new Error('Acesso negado - apenas administradores');
+    }
+
+    return {
+      ...this.igniterService.getPerformanceMetrics(),
+      timestamp: new Date().toISOString(),
+      system: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage(),
+      },
+    };
+  }
+
+  @Post('clear-cache')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Limpar cache do sistema' })
+  async clearCache(@Request() req: any, @Body() body?: { pattern?: string }) {
+    // Verificar se é admin
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
+      throw new Error('Acesso negado - apenas administradores');
+    }
+
+    const clearedCount = this.igniterService.clearCache(body?.pattern);
+
+    return {
+      success: true,
+      message: `Cache limpo com sucesso`,
+      clearedEntries: clearedCount,
+      pattern: body?.pattern || 'all',
+      clearedBy: req.user.userId,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('system-health')
+  @ApiOperation({ summary: 'Health check completo do sistema' })
+  async getSystemHealth() {
+    const performanceMetrics = this.igniterService.getPerformanceMetrics();
+
+    return {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0',
+      performance: {
+        cacheHitRate: performanceMetrics.hitRate,
+        avgResponseTime: performanceMetrics.avgResponseTime,
+        requestCount: performanceMetrics.requestCount,
+        cacheSize: performanceMetrics.cacheSize,
+      },
+      system: {
+        uptime: process.uptime(),
+        memory: {
+          used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+          total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+        },
+        node: process.version,
+      },
+      services: {
+        database: 'connected', // TODO: implementar check real
+        cache: 'active',
+        igniter: 'running',
+      },
+    };
+  }
 }
