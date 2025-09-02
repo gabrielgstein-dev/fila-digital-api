@@ -120,10 +120,28 @@ export class AuthController {
   @Post('google/token')
   @ApiOperation({
     summary: 'Login móvel com token Google',
-    description: 'Para APPs móveis que já possuem token Google',
+    description:
+      'Para APPs móveis que já possuem token Google válido. Valida o token e faz login automático',
   })
-  @ApiResponse({ status: 200, description: 'Login realizado com sucesso' })
-  @ApiResponse({ status: 401, description: 'Token Google inválido' })
+  @ApiResponse({
+    status: 200,
+    description: 'Login realizado com sucesso',
+    schema: {
+      type: 'object',
+      properties: {
+        access_token: { type: 'string', description: 'JWT token de acesso' },
+        userType: {
+          type: 'string',
+          description: 'Tipo do usuário (client, corporate_user, agent)',
+        },
+        user: { type: 'object', description: 'Dados do usuário logado' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Token Google inválido ou expirado',
+  })
   async googleMobileLogin(@Body() body: { access_token: string; user: any }) {
     return this.authService.validateGoogleTokenAndLogin(
       body.access_token,

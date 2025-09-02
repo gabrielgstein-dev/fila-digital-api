@@ -28,7 +28,10 @@ export class QueuesController {
   @UseGuards(TenantAuthGuard)
   @RequireTenant()
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Criar nova fila' })
+  @ApiOperation({
+    summary: 'Criar nova fila',
+    description: 'Cria uma nova fila de atendimento no tenant especificado',
+  })
   @ApiResponse({ status: 201, description: 'Fila criada com sucesso' })
   @ApiResponse({
     status: 403,
@@ -45,8 +48,14 @@ export class QueuesController {
   @UseGuards(TenantAuthGuard)
   @RequireTenant()
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Listar todas as filas do tenant' })
-  @ApiResponse({ status: 200, description: 'Lista de filas' })
+  @ApiOperation({
+    summary: 'Listar todas as filas do tenant',
+    description: 'Retorna lista completa de filas de atendimento do tenant',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de filas com dados completos',
+  })
   @ApiResponse({
     status: 403,
     description: 'Acesso negado - não pertence a este tenant',
@@ -59,8 +68,12 @@ export class QueuesController {
   @UseGuards(TenantAuthGuard)
   @RequireTenant()
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Buscar fila por ID' })
-  @ApiResponse({ status: 200, description: 'Dados da fila' })
+  @ApiOperation({
+    summary: 'Buscar fila por ID',
+    description: 'Retorna dados detalhados de uma fila específica',
+  })
+  @ApiResponse({ status: 200, description: 'Dados completos da fila' })
+  @ApiResponse({ status: 404, description: 'Fila não encontrada' })
   @ApiResponse({
     status: 403,
     description: 'Acesso negado - não pertence a este tenant',
@@ -70,8 +83,23 @@ export class QueuesController {
   }
 
   @Get('queues/:id/qrcode')
-  @ApiOperation({ summary: 'Gerar QR Code para a fila' })
-  @ApiResponse({ status: 200, description: 'QR Code da fila' })
+  @ApiOperation({
+    summary: 'Gerar QR Code para a fila',
+    description:
+      'Gera QR Code que permite aos clientes acessarem diretamente a fila para tirar senha',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'QR Code da fila em formato base64 ou URL',
+    schema: {
+      type: 'object',
+      properties: {
+        qrCode: { type: 'string', description: 'QR Code em base64' },
+        url: { type: 'string', description: 'URL da fila' },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Fila não encontrada' })
   async generateQRCode(@Param('id') id: string) {
     return this.queuesService.generateQRCode(id);
   }
@@ -112,8 +140,28 @@ export class QueuesController {
   @UseGuards(TenantAuthGuard)
   @RequireTenant()
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Chamar próximo ticket da fila' })
-  @ApiResponse({ status: 200, description: 'Próximo ticket chamado' })
+  @ApiOperation({
+    summary: 'Chamar próximo ticket da fila',
+    description: 'Chama o próximo cliente na fila de atendimento',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Próximo ticket chamado com sucesso',
+    schema: {
+      type: 'object',
+      properties: {
+        ticket: { type: 'object', description: 'Dados do ticket chamado' },
+        queueStatus: {
+          type: 'object',
+          description: 'Status atualizado da fila',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Fila não encontrada ou sem tickets na fila',
+  })
   @ApiResponse({
     status: 403,
     description: 'Acesso negado - não pertence a este tenant',
@@ -126,8 +174,25 @@ export class QueuesController {
   @UseGuards(TenantAuthGuard)
   @RequireTenant()
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Rechamar último ticket da fila' })
-  @ApiResponse({ status: 200, description: 'Ticket rechamado' })
+  @ApiOperation({
+    summary: 'Rechamar último ticket da fila',
+    description: 'Rechama o último ticket que foi chamado na fila',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Ticket rechamado com sucesso',
+    schema: {
+      type: 'object',
+      properties: {
+        ticket: { type: 'object', description: 'Dados do ticket rechamado' },
+        message: { type: 'string', description: 'Mensagem de confirmação' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Fila não encontrada ou nenhum ticket para rechamar',
+  })
   @ApiResponse({
     status: 403,
     description: 'Acesso negado - não pertence a este tenant',
