@@ -159,7 +159,7 @@ jobs:
           --cpu-boost \
           --no-traffic \
           --tag "${CLEAN_TAG}" \
-          --set-env-vars "^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render##DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}##JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
+          --set-env-vars "^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render##DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}##JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}##JWT_EXPIRES_IN=7d##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
         
         echo "📊 Aguardando deploy estabilizar..."
         sleep 10

@@ -4,9 +4,7 @@ const bcrypt = require('bcrypt');
 const prisma = new PrismaClient({
   datasources: {
     db: {
-      url:
-        process.env.DATABASE_URL ||
-        'postgresql://username:password@host:port/database?schema=public',
+      url: 'postgresql://fila_digital_qa_user:9MNgQAtAv96dQ69qcwnsgOsPvfAVbgEV@dpg-d2i7luv5r7bs73f6s5kg-a.oregon-postgres.render.com/fila_digital_qa?schema=public',
     },
   },
 });
@@ -129,4 +127,3 @@ async function insertCorporateUsers() {
 }
 
 insertCorporateUsers();
-
