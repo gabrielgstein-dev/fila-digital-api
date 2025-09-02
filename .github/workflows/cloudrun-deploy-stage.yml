@@ -33,12 +33,9 @@ jobs:
           echo "Tag detectada: $TAG_NAME"
           
           if [[ "$TAG_NAME" == *"-stage" ]]; then
-            # Sanitizar tag para Cloud Run (remover hífens e caracteres especiais)
-            SANITIZED_TAG=$(echo "$TAG_NAME" | sed 's/-stage$//' | sed 's/\./-/g' | sed 's/[^a-z0-9-]//g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
             echo "should_deploy=true" >> $GITHUB_OUTPUT
             echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
-            echo "sanitized_tag=$SANITIZED_TAG" >> $GITHUB_OUTPUT
-            echo "✅ Deploy será executado para versão: $TAG_NAME (tag sanitizada: $SANITIZED_TAG)"
+            echo "✅ Deploy será executado para versão: $TAG_NAME"
           else
             echo "should_deploy=false" >> $GITHUB_OUTPUT
             echo "❌ Tag não contém '-stage', deploy cancelado"
@@ -46,11 +43,9 @@ jobs:
         elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
           # Manual dispatch
           TAG_NAME="${{ github.event.inputs.tag }}"
-          SANITIZED_TAG=$(echo "$TAG_NAME" | sed 's/-stage$//' | sed 's/\./-/g' | sed 's/[^a-z0-9-]//g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
           echo "should_deploy=true" >> $GITHUB_OUTPUT
           echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "sanitized_tag=$SANITIZED_TAG" >> $GITHUB_OUTPUT
-          echo "✅ Deploy manual para versão: $TAG_NAME (tag sanitizada: $SANITIZED_TAG)"
+          echo "✅ Deploy manual para versão: $TAG_NAME"
         else
           echo "should_deploy=false" >> $GITHUB_OUTPUT
           echo "❌ Evento não suportado para deploy"
@@ -141,12 +136,14 @@ jobs:
     - name: Deploy to Cloud Run
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
-        echo "🚀 Fazendo deploy com nova imagem..."
-        echo "🔍 Debug Info:"
-        echo "SERVICE_NAME: $SERVICE_NAME"
-        echo "SANITIZED_TAG: ${{ steps.version_check.outputs.sanitized_tag }}"
-        echo "GCP_PROJECT_ID: $GCP_PROJECT_ID"
-        echo "GCP_REGION: $GCP_REGION"
+        echo "🚀 Fazendo deploy forçado com nova imagem..."
+        VERSION="${{ steps.version_check.outputs.version }}"
+        # Criar tag válida para Cloud Run (apenas letras minúsculas, números e hífens)
+        # Remove sufixos problemáticos e substitui caracteres inválidos
+        CLEAN_TAG=$(echo "v${VERSION}" | sed 's/-stage$//' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/-$//')
+        echo "Tag original: v${VERSION}"
+        echo "Tag limpa: ${CLEAN_TAG}"
+        
         gcloud run deploy "$SERVICE_NAME" \
           --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
           --region "$GCP_REGION" \
@@ -160,13 +157,17 @@ jobs:
           --timeout 3600 \
           --execution-environment gen2 \
           --cpu-boost \
-          --tag "${{ steps.version_check.outputs.sanitized_tag }}" \
-          --set-env-vars NODE_ENV=${{ secrets.NODE_ENV_STAGE }} \
-          --set-env-vars CORS_ORIGIN="https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com" \
-          --set-env-vars DATABASE_PROVIDER=render \
-          --set-env-vars DATABASE_URL="${{ secrets.DATABASE_URL_STAGE }}" \
-          --set-env-vars JWT_SECRET="${{ secrets.JWT_SECRET_STAGE }}" \
-          --set-env-vars RABBITMQ_URL="${{ secrets.RABBITMQ_URL_STAGE }}"
+          --no-traffic \
+          --tag "${CLEAN_TAG}" \
+          --set-env-vars "^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render##DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}##JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
+        
+        echo "📊 Aguardando deploy estabilizar..."
+        sleep 10
+        
+        echo "🔄 Direcionando 100% do tráfego para nova versão..."
+        gcloud run services update-traffic "$SERVICE_NAME" \
+          --to-latest \
+          --region "$GCP_REGION"
 
     - name: Get service URL
       if: steps.version_check.outputs.should_deploy == 'true'
