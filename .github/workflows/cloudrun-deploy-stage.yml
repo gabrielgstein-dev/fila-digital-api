@@ -126,7 +126,8 @@ jobs:
           --timeout 3600 \
           --execution-environment gen2 \
           --cpu-boost \
-          --set-env-vars "^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}##JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}##DATABASE_PROVIDER=render"
+          --set-env-vars "^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render" \
+          --update-secrets DATABASE_URL=DATABASE_URL_STAGE:latest,JWT_SECRET=JWT_SECRET_STAGE:latest,RABBITMQ_URL=RABBITMQ_URL_STAGE:latest
 
     - name: Get service URL
       if: steps.version_check.outputs.should_deploy == 'true'
