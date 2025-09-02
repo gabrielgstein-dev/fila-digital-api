@@ -93,9 +93,7 @@ jobs:
           --cpu 2 \
           --min-instances 1 \
           --max-instances 50 \
-          --set-env-vars NODE_ENV=production,ENVIRONMENT=production \
-          --set-env-vars CORS_ORIGIN="https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com" \
-          --set-env-vars DATABASE_PROVIDER=render \
+          --set-env-vars "^##^NODE_ENV=production##ENVIRONMENT=production##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render" \
           --update-secrets DATABASE_URL=DATABASE_URL_PROD:latest,JWT_SECRET=JWT_SECRET_PROD:latest,RABBITMQ_URL=RABBITMQ_URL_PROD:latest
 
     - name: Get service URL
