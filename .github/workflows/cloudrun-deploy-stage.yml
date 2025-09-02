@@ -110,6 +110,34 @@ jobs:
         docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
         docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
 
+    - name: Force Clean Cloud Run Service
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        echo "🧹 Forçando limpeza completa do serviço Cloud Run..."
+        
+        # Limpar imagens antigas do Container Registry (manter apenas as 3 mais recentes)
+        echo "🗑️ Limpando imagens antigas do Container Registry..."
+        gcloud container images list-tags gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME \
+          --limit=999 --sort-by=TIMESTAMP \
+          --format="get(digest)" --filter="timestamp.datetime < -P7D" | \
+          while read digest; do
+            if [ ! -z "$digest" ]; then
+              echo "Deletando imagem antiga: $digest"
+              gcloud container images delete gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME@$digest --quiet || true
+            fi
+          done
+        
+        # Tentar deletar o serviço existente (ignora erro se não existir)
+        echo "🗑️ Deletando serviço Cloud Run existente..."
+        gcloud run services delete "$SERVICE_NAME" \
+          --region "$GCP_REGION" \
+          --quiet || echo "⚠️ Serviço não existia ou não pôde ser deletado"
+        
+        # Aguardar alguns segundos para garantir limpeza
+        sleep 15
+        
+        echo "✅ Limpeza completa concluída, prosseguindo com deploy limpo..."
+
     - name: Deploy to Cloud Run
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |

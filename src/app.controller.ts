@@ -7,6 +7,7 @@ import {
 } from '@nestjs/swagger';
 import { AppService } from './app.service';
 import { HealthResponseDto } from './common/dto/health-response.dto';
+import * as path from 'path';
 
 @ApiTags('system')
 @Controller()
@@ -46,10 +47,10 @@ export class AppController {
     description: 'Informações de versão',
   })
   getVersion() {
-    const packageJson = require('../package.json');
+    // Versão temporária hardcoded para não atrasar o deploy
     return {
-      name: packageJson.name,
-      version: packageJson.version,
+      name: 'fila-api',
+      version: '1.0.11-stage-with-cleanup',
       environment: process.env.NODE_ENV || 'development',
       nodeVersion: process.version,
       timestamp: new Date().toISOString(),
