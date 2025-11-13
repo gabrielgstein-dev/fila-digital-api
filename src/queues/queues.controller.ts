@@ -1,28 +1,32 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Param,
-  Put,
+  Controller,
   Delete,
+  Get,
+  Param,
+  Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import {
-  ApiTags,
+  ApiBearerAuth,
   ApiOperation,
   ApiResponse,
-  ApiBearerAuth,
+  ApiTags,
 } from '@nestjs/swagger';
-import { QueuesService } from './queues.service';
-import { CreateQueueDto } from '../common/dto/create-queue.dto';
-import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
 import { RequireTenant } from '../auth/decorators/require-tenant.decorator';
+import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
+import { CreateQueueDto } from '../common/dto/create-queue.dto';
+import { TicketCleanupService } from '../tickets/ticket-cleanup.service';
+import { QueuesService } from './queues.service';
 
 @ApiTags('queues')
 @Controller()
 export class QueuesController {
-  constructor(private readonly queuesService: QueuesService) {}
+  constructor(
+    private readonly queuesService: QueuesService,
+    private readonly ticketCleanupService: TicketCleanupService,
+  ) {}
 
   @Post('tenants/:tenantId/queues')
   @UseGuards(TenantAuthGuard)
@@ -199,5 +203,100 @@ export class QueuesController {
   })
   async recall(@Param('tenantId') tenantId: string, @Param('id') id: string) {
     return this.queuesService.recall(tenantId, id);
+  }
+
+  // Endpoint de limpeza removido - expiração de tickets desabilitada
+  // @Post('tenants/:tenantId/queues/:queueId/cleanup')
+
+  @Get('tenants/:tenantId/queues/:queueId/abandonment-stats')
+  @UseGuards(TenantAuthGuard)
+  @RequireTenant()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Estatísticas de abandono da fila',
+    description: 'Retorna estatísticas de tickets abandonados nos últimos dias',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estatísticas de abandono',
+    schema: {
+      type: 'object',
+      properties: {
+        totalTickets: { type: 'number' },
+        noShowTickets: { type: 'number' },
+        abandonmentRate: { type: 'number' },
+        period: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Acesso negado - não pertence a este tenant',
+  })
+  async getAbandonmentStats(
+    @Param('tenantId') tenantId: string,
+    @Param('queueId') queueId: string,
+  ) {
+    return this.ticketCleanupService.getAbandonmentStats(queueId);
+  }
+
+  @Get('tenants/:tenantId/queues/:queueId/stats')
+  @UseGuards(TenantAuthGuard)
+  @RequireTenant()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Estatísticas detalhadas da fila',
+    description:
+      'Retorna estatísticas completas de uma fila específica incluindo capacidade, tolerância, estimativas e taxas de conclusão',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estatísticas completas da fila',
+    schema: {
+      type: 'object',
+      properties: {
+        queueInfo: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            capacity: { type: 'number' },
+            toleranceMinutes: { type: 'number' },
+            avgServiceTime: { type: 'number' },
+            status: { type: 'string', enum: ['ativa', 'pausada', 'inativa'] },
+          },
+        },
+        currentStats: {
+          type: 'object',
+          properties: {
+            waitingCount: { type: 'number' },
+            calledCount: { type: 'number' },
+            completedToday: { type: 'number' },
+            nextEstimatedTime: { type: 'number' },
+            completionRate: { type: 'number' },
+          },
+        },
+        performance: {
+          type: 'object',
+          properties: {
+            avgWaitTime: { type: 'number' },
+            totalProcessedToday: { type: 'number' },
+            abandonmentRate: { type: 'number' },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Acesso negado - não pertence a este tenant',
+  })
+  @ApiResponse({ status: 404, description: 'Fila não encontrada' })
+  async getQueueStats(
+    @Param('tenantId') tenantId: string,
+    @Param('queueId') queueId: string,
+  ) {
+    return this.queuesService.getQueueDetailedStats(tenantId, queueId);
   }
 }
