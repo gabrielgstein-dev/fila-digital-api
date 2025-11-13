@@ -38,15 +38,22 @@ Sistema moderno de gerenciamento de filas digitais para empresas. Permite que cl
 5. **É Chamado**: Recebe notificação quando sua senha for chamada
 
 ### **Endpoints Públicos**
-- `GET /queues/:id/qrcode` - Gerar QR Code para a fila
-- `GET /queues/:queueId/status` - Ver status da fila
-- `GET /tickets/:id` - Ver detalhes do ticket
+- `GET /api/v1/queues/:id/qrcode` - Gerar QR Code para a fila
+- `GET /api/v1/queues/:queueId/status` - Ver status da fila
+- `GET /api/v1/tickets/:id` - Ver detalhes do ticket
 
 ### **Endpoints Autenticados**
-- `POST /queues/:queueId/tickets` - Entrar na fila (requer JWT)
-- `PUT /tickets/:id/recall` - Rechamar ticket
-- `PUT /tickets/:id/skip` - Pular ticket
-- `PUT /tickets/:id/complete` - Completar atendimento
+- `POST /api/v1/queues/:queueId/tickets` - Entrar na fila (requer JWT)
+- `PUT /api/v1/tickets/:id/recall` - Rechamar ticket
+- `PUT /api/v1/tickets/:id/skip` - Pular ticket
+- `PUT /api/v1/tickets/:id/complete` - Completar atendimento
+
+### **Endpoints de Tempo Real (Igniter.js)**
+- `GET /api/rt/tickets/stream` - Stream geral de tickets
+- `GET /api/rt/tickets/{ticketId}/stream` - Stream de ticket específico
+- `GET /api/rt/tickets/{ticketId}` - Buscar ticket específico
+- `GET /api/rt/tickets/queue/{queueId}` - Buscar tickets de uma fila
+- `GET /api/rt/tickets/stats` - Estatísticas do sistema
 
 ### **WebSocket Events**
 - `join-queue-client` - Entrar na fila para receber atualizações
@@ -56,9 +63,11 @@ Sistema moderno de gerenciamento de filas digitais para empresas. Permite que cl
 - `ticket-status-updated` - Mudanças no status do ticket
 
 ### **Exemplo de Uso**
+
+#### **WebSocket (Socket.IO)**
 ```javascript
 // Conectar ao WebSocket
-const socket = io('http://localhost:3000');
+const socket = io('http://localhost:8080');
 
 // Entrar na fila
 socket.emit('join-queue-client', { queueId: 'fila-id' });
@@ -73,6 +82,20 @@ socket.on('call-made', (data) => {
 });
 ```
 
+#### **Server-Sent Events (SSE) - Tempo Real**
+```javascript
+// Conectar ao stream de tickets
+const eventSource = new EventSource('/api/rt/tickets/stream');
+
+eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log('Ticket atualizado:', data);
+};
+
+// Conectar ao stream de uma fila específica
+const queueEventSource = new EventSource('/api/rt/tickets/queue/fila-id/stream');
+```
+
 **📖 [Documentação Completa do Fluxo](QR-CODE-FLOW.md)**
 **🎨 [Exemplo de Página do Cliente](frontend-examples/queue-client-page.html)**
 
@@ -80,11 +103,12 @@ socket.on('call-made', (data) => {
 
 ### **Backend**
 - **Node.js 22** + **TypeScript**
-- **NestJS** - Framework escalável
+- **NestJS** - Framework principal
+- **Igniter.js** - Sistema de tempo real otimizado
 - **Prisma** - ORM moderno
 - **PostgreSQL** - Banco de dados
-- **Redis** - Cache e sessões
-- **Socket.IO** - WebSocket para tempo real
+- **Socket.IO** - WebSocket para notificações
+- **Server-Sent Events (SSE)** - Streams de tempo real
 - **JWT** - Autenticação
 - **Swagger** - Documentação da API
 
@@ -162,19 +186,20 @@ pnpm run test:cov
 ## 📚 Documentação
 
 ### **API**
-- **🌐 Swagger (local):** http://localhost:3001/api
-- **💚 Health Check:** http://localhost:3001/api/v1
+- **🌐 Swagger (local):** http://localhost:8080/api
+- **💚 Health Check:** http://localhost:8080/api/v1/health
+- **⚡ Tempo Real (Igniter):** http://localhost:8080/api/rt
 
 ### **Guias**
 - **📖 [Deploy QA](SETUP-GCP.md)** - Como fazer deploy em QA
-- **🧪 [Testes E2E](TEST-README.md)** - Documentação dos testes
+- **🚀 [Melhorias Futuras](FUTURE-SCALABILITY-IMPROVEMENTS.md)** - Melhorias de escalabilidade
 
 ## 🌍 Ambientes
 
 ### **🔧 Desenvolvimento**
-- **API:** http://localhost:3001
+- **API:** http://localhost:8080
 - **Banco:** Local PostgreSQL
-- **Redis:** Local (opcional)
+- **Tempo Real:** Server-Sent Events + WebSocket
 
 ### **🧪 QA**
 - **API:** https://fila-api-qa-[hash].europe-west1.run.app
@@ -230,7 +255,7 @@ REDIS_URL="redis://localhost:6379"
 
 # Aplicação
 NODE_ENV="development"
-PORT=3001
+PORT=8080
 CORS_ORIGIN="http://localhost:3000"
 
 # WebSockets
@@ -283,7 +308,7 @@ WEBSOCKET_CORS_ORIGIN="http://localhost:3000"
 
 - **📧 Issues:** [GitHub Issues](https://github.com/gabrielgstein-dev/fila-digital-api/issues)
 - **📖 Docs:** [Documentação](./INDEX.md)
-- **🧪 Testes:** [Test Suite](TEST-README.md)
+- **🚀 Melhorias Futuras:** [Escalabilidade](FUTURE-SCALABILITY-IMPROVEMENTS.md)
 
 ---
 
