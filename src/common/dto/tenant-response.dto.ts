@@ -1,5 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+export class AdminUserResponseDto {
+  @ApiProperty({ description: 'ID do usuário administrador' })
+  id: string;
+
+  @ApiProperty({ description: 'Email do administrador' })
+  email: string;
+
+  @ApiProperty({ description: 'Nome do administrador' })
+  name: string;
+
+  @ApiProperty({ description: 'Role do administrador' })
+  role: string;
+}
+
 export class TenantResponseDto {
   @ApiProperty({ description: 'ID único do tenant' })
   id: string;
@@ -24,5 +38,16 @@ export class TenantResponseDto {
 
   @ApiProperty({ description: 'Data da última atualização' })
   updatedAt: Date;
-}
 
+  @ApiPropertyOptional({
+    description: 'Dados do administrador criado (apenas na criação)',
+    type: AdminUserResponseDto,
+  })
+  adminUser?: AdminUserResponseDto;
+
+  @ApiPropertyOptional({
+    description: 'Senha temporária gerada (apenas se não foi informada senha)',
+    example: 'K7m@xP9#vL2q',
+  })
+  temporaryPassword?: string;
+}

@@ -29,4 +29,32 @@ export class CreateTenantDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @ApiProperty({
+    description:
+      'Email do administrador inicial da conta (será criado automaticamente)',
+    example: 'admin@empresa.com',
+  })
+  @IsEmail()
+  adminEmail: string;
+
+  @ApiPropertyOptional({
+    description: 'Nome do administrador inicial',
+    example: 'João Silva',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  adminName?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Senha do administrador (se não informada, será gerada uma temporária)',
+    example: 'SenhaSegura123!',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  adminPassword?: string;
 }

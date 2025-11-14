@@ -1,14 +1,15 @@
-import {
-  IsString,
-  IsOptional,
-  IsEnum,
-  IsInt,
-  Min,
-  MinLength,
-  MaxLength,
-} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { QueueType } from '@prisma/client';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateQueueDto {
   @ApiProperty({ description: 'Nome da fila' })
@@ -33,8 +34,8 @@ export class CreateQueueDto {
   queueType?: QueueType;
 
   @ApiPropertyOptional({
-    description: 'Capacidade máxima da fila',
-    default: 100,
+    description:
+      'Capacidade máxima da fila (deixe vazio para capacidade ilimitada)',
   })
   @IsOptional()
   @IsInt()
@@ -49,4 +50,12 @@ export class CreateQueueDto {
   @IsInt()
   @Min(30)
   avgServiceTime?: number;
+
+  @ApiPropertyOptional({
+    description: 'Status ativo da fila',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
