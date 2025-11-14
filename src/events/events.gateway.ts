@@ -210,4 +210,64 @@ export class EventsGateway {
   emitTicketStatusToClient(ticketId: string, data: any) {
     this.server.to(`ticket-${ticketId}`).emit('ticket-status-updated', data);
   }
+
+  // Métodos para notificações de mudança de ticket
+  emitTicketChangeToUser(userId: string, data: any) {
+    this.server.to(`user-${userId}`).emit('ticket-changed', data);
+    this.logger.log(`Ticket change notification sent to user ${userId}`);
+  }
+
+  emitSessionInvalidationToUser(userId: string, data: any) {
+    this.server.to(`user-${userId}`).emit('session-invalidated', data);
+    this.logger.log(`Session invalidation notification sent to user ${userId}`);
+  }
+
+  emitSecurityAlertToTenant(tenantId: string, data: any) {
+    this.server.to(`tenant-admins-${tenantId}`).emit('security-alert', data);
+    this.logger.log(`Security alert sent to tenant ${tenantId} admins`);
+  }
+
+  // Método para usuário entrar em salas específicas
+  @SubscribeMessage('join-user-room')
+  handleJoinUserRoom(
+    @MessageBody() data: { userId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.join(`user-${data.userId}`);
+    this.logger.log(
+      `Cliente ${client.id} entrou na sala do usuário ${data.userId}`,
+    );
+    client.emit('joined-user-room', { userId: data.userId });
+  }
+
+  @SubscribeMessage('leave-user-room')
+  handleLeaveUserRoom(
+    @MessageBody() data: { userId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.leave(`user-${data.userId}`);
+    this.logger.log(
+      `Cliente ${client.id} saiu da sala do usuário ${data.userId}`,
+    );
+    client.emit('left-user-room', { userId: data.userId });
+  }
+
+  @SubscribeMessage('join-tenant-admins')
+  handleJoinTenantAdmins(
+    @MessageBody() data: { tenantId: string; userRole: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    // Verificar se o usuário tem permissão de administrador
+    if (['ADMINISTRADOR', 'GESTOR'].includes(data.userRole)) {
+      client.join(`tenant-admins-${data.tenantId}`);
+      this.logger.log(
+        `Admin ${client.id} entrou na sala de admins do tenant ${data.tenantId}`,
+      );
+      client.emit('joined-tenant-admins', { tenantId: data.tenantId });
+    } else {
+      client.emit('error', {
+        message: 'Acesso negado - permissões insuficientes',
+      });
+    }
+  }
 }
