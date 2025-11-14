@@ -1,27 +1,27 @@
 import {
-  Controller,
-  Post,
   Body,
+  Controller,
+  Get,
   HttpCode,
   HttpStatus,
-  UseGuards,
-  Get,
+  Post,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import {
-  ApiTags,
+  ApiExcludeEndpoint,
   ApiOperation,
   ApiResponse,
-  ApiExcludeEndpoint,
+  ApiTags,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { AuthGuard } from '@nestjs/passport';
-import { AuthService } from './auth.service';
-import { LoginDto } from '../common/dto/login.dto';
-import { CorporateUserLoginDto } from '../common/dto/corporate-user-login.dto';
-import { AuthThrottleGuard } from './guards/auth-throttle.guard';
 import { Response } from 'express';
+import { CorporateUserLoginDto } from '../common/dto/corporate-user-login.dto';
+import { LoginDto } from '../common/dto/login.dto';
+import { AuthService } from './auth.service';
+import { AuthThrottleGuard } from './guards/auth-throttle.guard';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -40,6 +40,8 @@ export class AuthController {
     description: 'Muitas tentativas - tente novamente em alguns minutos',
   })
   async login(@Body() loginDto: CorporateUserLoginDto) {
+    console.log('Login para > ', loginDto.email);
+    console.log('Password para > ', loginDto.password);
     return this.authService.corporateUserLogin(
       loginDto.email,
       loginDto.password,

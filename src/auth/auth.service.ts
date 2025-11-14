@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AuthService {
@@ -308,6 +308,9 @@ export class AuthService {
       where: { email },
       include: { tenant: true },
     });
+
+    console.log('password', password);
+    console.log('password encrypted', await bcrypt.hash(password, 10));
 
     if (!corporateUser || !corporateUser.isActive) {
       throw new UnauthorizedException('Credenciais inválidas');

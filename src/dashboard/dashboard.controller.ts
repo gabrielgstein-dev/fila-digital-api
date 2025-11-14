@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { IgniterService } from '../igniter/igniter.service';
+import { IgniterService } from '../rt/igniter.service';
 
 // DTOs para validação
 export class UpdateMetricsDto {

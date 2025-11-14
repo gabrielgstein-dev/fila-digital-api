@@ -1,28 +1,29 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Param,
-  Put,
+  Controller,
   Delete,
-  UseGuards,
+  Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
+  Param,
+  Post,
+  Put,
+  UseGuards,
 } from '@nestjs/common';
 import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
   ApiBearerAuth,
+  ApiOperation,
   ApiParam,
+  ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
-import { TenantsService } from './tenants.service';
-import { CreateTenantDto } from '../common/dto/create-tenant.dto';
-import { UpdateTenantDto } from '../common/dto/update-tenant.dto';
-import { TenantResponseDto } from '../common/dto/tenant-response.dto';
-import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
+import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
+import { CreateTenantDto } from '../common/dto/create-tenant.dto';
+import { TenantResponseDto } from '../common/dto/tenant-response.dto';
+import { UpdateTenantDto } from '../common/dto/update-tenant.dto';
+import { TenantsService } from './tenants.service';
 
 import { CurrentAgent } from '../auth/decorators/current-agent.decorator';
 
@@ -93,6 +94,9 @@ export class TenantsController {
   async findMyTenant(
     @CurrentAgent('tenantId') tenantId: string,
   ): Promise<TenantResponseDto> {
+    if (!tenantId) {
+      throw new NotFoundException('Tenant ID não encontrado no token');
+    }
     return this.tenantsService.findOne(tenantId);
   }
 

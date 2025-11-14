@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { TicketStatus } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ClientsService {
@@ -192,7 +192,7 @@ export class ClientsService {
       : null;
 
     // Intervalo médio entre chamadas
-    let avgCallInterval = queue.avgServiceTime;
+    let avgCallInterval = queue.avgServiceTime || 300;
     if (recentCalls.length > 1) {
       const intervals = [];
       for (let i = 0; i < recentCalls.length - 1; i++) {
@@ -287,14 +287,45 @@ export class ClientsService {
       return 0;
     }
 
-    // Tempo estimado baseado na posição e velocidade atual
+    if (position === 0) return 0;
+
     const queue =
       ticket.queue ||
       (await this.prisma.queue.findUnique({
         where: { id: ticket.queueId },
       }));
 
-    return position * (queue?.avgServiceTime || 600); // 10min padrão
+    if (!queue) {
+      return position * 600;
+    }
+
+    try {
+      const threeHoursAgo = new Date();
+      threeHoursAgo.setHours(threeHoursAgo.getHours() - 3);
+
+      const result = await this.prisma.$queryRaw<
+        Array<{ avg_recent_service_time: number | null }>
+      >`
+        SELECT
+          AVG((metadata->>'serviceTime')::numeric)::integer as avg_recent_service_time
+        FROM queue_ticket_history
+        WHERE "queueId" = ${ticket.queueId}
+          AND action = 'COMPLETED'
+          AND "calledAt" >= ${threeHoursAgo}
+          AND metadata->>'serviceTime' IS NOT NULL
+          AND (metadata->>'serviceTime')::numeric > 0
+      `;
+
+      const avgRecentServiceTime = result[0]?.avg_recent_service_time;
+
+      if (avgRecentServiceTime && avgRecentServiceTime > 0) {
+        return position * avgRecentServiceTime;
+      }
+    } catch (error) {
+      console.error('Erro ao calcular tempo médio recente:', error);
+    }
+
+    return position * (queue?.avgServiceTime || 600);
   }
 
   private async calculateRealTimeMetrics(tickets: any[]) {

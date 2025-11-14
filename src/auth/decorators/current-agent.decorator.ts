@@ -5,7 +5,10 @@ export const CurrentAgent = createParamDecorator(
     const request = ctx.switchToHttp().getRequest();
     const user = request.user;
 
-    if (!user || user.userType !== 'agent') {
+    if (
+      !user ||
+      (user.userType !== 'agent' && user.userType !== 'corporate_user')
+    ) {
       return null;
     }
 
@@ -22,4 +25,3 @@ export const CurrentAgent = createParamDecorator(
     };
   },
 );
-
