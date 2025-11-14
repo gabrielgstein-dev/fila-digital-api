@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
@@ -15,6 +16,8 @@ import { MessagingModule } from './messaging/messaging.module';
 import { AgentsModule } from './agents/agents.module';
 import { CorporateUsersModule } from './corporate-users/corporate-users.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { SmsModule } from './sms/sms.module';
+import { IgniterModule } from './rt/igniter.module';
 import { SanitizeInterceptor } from './common/interceptors/sanitize.interceptor';
 import { TenantFilterInterceptor } from './common/interceptors/tenant-filter.interceptor';
 
@@ -23,6 +26,7 @@ import { TenantFilterInterceptor } from './common/interceptors/tenant-filter.int
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
         name: 'short',
@@ -51,6 +55,8 @@ import { TenantFilterInterceptor } from './common/interceptors/tenant-filter.int
     AgentsModule,
     CorporateUsersModule,
     DashboardModule,
+    SmsModule,
+    IgniterModule,
   ],
   controllers: [AppController],
   providers: [

@@ -2,8 +2,82 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { ExpressAdapter } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import * as express from 'express';
+import { type RequestHandler } from 'express';
+import { Readable } from 'node:stream';
+
+// === IMPORTANTE: seu router do Igniter ===
+import { AppRouter } from './rt/igniter.router';
+import { TicketRealtimeOptimizedController } from './rt/ticket-realtime-optimized.controller';
+
+/**
+ * Adaptador mínimo para Express:
+ * - Constrói um Web Request com headers e body do req Express
+ * - Invoca AppRouter.handler(Request)
+ * - Transmite o corpo da resposta (inclui SSE)
+ */
+function createIgniterExpressAdapter(
+  handler: (req: Request) => Promise<Response>,
+): RequestHandler {
+  return async (req, res) => {
+    try {
+      const origin = `${req.protocol}://${req.get('host')}`;
+      const url = origin + req.originalUrl;
+
+      // Copia headers do Express para Headers Web
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (Array.isArray(v)) {
+          v.forEach((val) => headers.append(k, val));
+        } else if (v != null) {
+          headers.set(k, String(v));
+        }
+      }
+
+      // Para métodos com corpo, passamos o stream do req
+      const hasBody = !['GET', 'HEAD'].includes(req.method);
+      const webReq = new Request(url, {
+        method: req.method,
+        headers,
+        body: hasBody ? (req as any) : undefined,
+        // Node 18+ requer duplex quando body é Readable
+        ...(hasBody ? { duplex: 'half' as any } : {}),
+      });
+
+      const webRes = await handler(webReq);
+
+      // Status e headers
+      res.status(webRes.status);
+      webRes.headers.forEach((value, key) => res.setHeader(key, value));
+
+      // Corpo (inclui SSE)
+      if (webRes.body) {
+        // Converte WHATWG ReadableStream -> Node Readable e faz pipe
+        const nodeReadable = Readable.fromWeb(webRes.body as any);
+        // Para SSE é bom flush imediato dos headers
+        if (
+          (webRes.headers.get('content-type') || '').includes(
+            'text/event-stream',
+          )
+        ) {
+          (res as any).flushHeaders?.();
+        }
+        nodeReadable.pipe(res);
+      } else {
+        // Sem body: envia buffer (casos raros)
+        const buf = Buffer.from(await webRes.arrayBuffer());
+        res.send(buf);
+      }
+    } catch (err) {
+      // Fallback de erro
+      console.error('[IgniterAdapter] error:', err);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  };
+}
 
 async function bootstrap() {
   console.log('🚀 [STEP 1] Iniciando aplicação...');
@@ -15,9 +89,8 @@ async function bootstrap() {
   console.log('  RABBITMQ_URL:', process.env.RABBITMQ_URL ? 'SET' : 'NOT SET');
 
   console.log('🏗️ [STEP 2] Criando aplicação NestJS...');
-  const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
-  });
+  const server = express();
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server));
   console.log('✅ [STEP 2] Aplicação NestJS criada com sucesso!');
 
   console.log('⚙️ [STEP 3] Obtendo ConfigService...');
@@ -28,8 +101,8 @@ async function bootstrap() {
   app.use(
     helmet({
       contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
       hsts: configService.get('NODE_ENV') === 'production',
-      xssFilter: false,
       noSniff: true,
       frameguard: { action: 'deny' },
       hidePoweredBy: true,
@@ -38,26 +111,18 @@ async function bootstrap() {
   console.log('✅ [STEP 4] Helmet configurado!');
 
   console.log('🌐 [STEP 5] Configurando CORS...');
-
-  // Configuração de CORS baseada no ambiente
   const nodeEnv = configService.get('NODE_ENV') || 'development';
   let corsOrigins: string[] | boolean;
 
   if (nodeEnv === 'production') {
-    // Em produção, usar apenas domínios específicos e seguros
     const productionOrigins = configService.get('CORS_ORIGIN') || '';
-    if (productionOrigins) {
-      corsOrigins = productionOrigins.split(',').map((origin) => origin.trim());
-    } else {
-      // Fallback para domínios padrão de produção
-      corsOrigins = [
-        'https://fila-digital.com',
-        'https://www.fila-digital.com',
-        'https://app.fila-digital.com',
-      ];
-    }
-
-    // Validar que todas as origens são HTTPS em produção
+    corsOrigins = productionOrigins
+      ? productionOrigins.split(',').map((o) => o.trim())
+      : [
+          'https://fila-digital.com',
+          'https://www.fila-digital.com',
+          'https://app.fila-digital.com',
+        ];
     if (Array.isArray(corsOrigins)) {
       corsOrigins = corsOrigins.filter(
         (origin) =>
@@ -66,18 +131,15 @@ async function bootstrap() {
           !origin.includes('127.0.0.1'),
       );
     }
-
     console.log('🌐 [STEP 5] PRODUÇÃO: Origens CORS seguras:', corsOrigins);
   } else {
-    // Em desenvolvimento local, liberar TODOS os CORS para facilitar testes
-    corsOrigins = true; // true = permite todas as origens
+    corsOrigins = true;
     console.log(
       '🌐 [STEP 5] DESENVOLVIMENTO LOCAL: CORS liberado para TODAS as origens',
     );
   }
 
-  // Configuração de CORS baseada no ambiente
-  const corsConfig = {
+  app.enableCors({
     origin: corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
@@ -87,14 +149,12 @@ async function bootstrap() {
       'Accept',
       'Origin',
     ],
-    credentials: false,
-    maxAge: nodeEnv === 'production' ? 86400 : 3600, // 24h em produção, 1h em dev
+    credentials: false, // troque para true se for usar cookies/sessão
+    maxAge: nodeEnv === 'production' ? 86400 : 3600,
     preflightContinue: false,
     optionsSuccessStatus: 204,
-  };
-
-  app.enableCors(corsConfig);
-  console.log('✅ [STEP 5] CORS configurado com segurança para', nodeEnv);
+  });
+  console.log('✅ [STEP 5] CORS configurado para', nodeEnv);
 
   console.log('🔧 [STEP 6] Configurando pipes globais...');
   app.useGlobalPipes(
@@ -112,9 +172,11 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
   console.log('✅ [STEP 7] Prefixo configurado!');
 
-  console.log('📚 [STEP 8] Configurando Swagger...');
+  // Recomendados em prod
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  app.enableShutdownHooks();
 
-  // Obter versão do package.json
+  console.log('📚 [STEP 8] Configurando Swagger...');
   const packageJson = require('../package.json');
   const version = packageJson.version;
   const buildTime = new Date().toISOString();
@@ -132,20 +194,29 @@ async function bootstrap() {
   SwaggerModule.setup('api', app, document);
   console.log('✅ [STEP 8] Swagger configurado!');
 
+  // === AQUI: monte o Igniter sob /api/rt ===
+  console.log('⚡ [IGNITER] Configurando TicketController...');
+  const ticketController = app.get(TicketRealtimeOptimizedController);
+  AppRouter.setTicketController(ticketController);
+  console.log('✅ [IGNITER] TicketController configurado!');
+
+  const igniterHandler = createIgniterExpressAdapter(AppRouter.handler);
+  // Monte DEPOIS de configurar helmet/CORS para herdar os middlewares
+  app.getHttpAdapter().getInstance().use('/api/rt', igniterHandler);
+  console.log('⚡ [IGNITER] Montado em /api/rt');
+
   const port = process.env.PORT || 8080;
   console.log(`🚀 [STEP 9] Tentando iniciar servidor na porta: ${port}`);
   console.log(`🚀 [STEP 9] Fazendo bind em 0.0.0.0:${port}...`);
 
+  await app.init();
   await app.listen(port, '0.0.0.0');
 
   console.log('🎉 [SUCCESS] Servidor iniciado com sucesso!');
-  console.log(`🌍 [SUCCESS] API rodando em http://0.0.0.0:${port}`);
-  console.log(
-    `📖 [SUCCESS] Documentação disponível em http://0.0.0.0:${port}/api`,
-  );
-  console.log(
-    `❤️ [SUCCESS] Health check em http://0.0.0.0:${port}/api/v1/health`,
-  );
+  console.log(`🌍 [SUCCESS] API Nest em http://0.0.0.0:${port}/api/v1`);
+  console.log(`📖 [SUCCESS] Swagger em http://0.0.0.0:${port}/api`);
+  console.log(`⚡ [SUCCESS] Igniter em http://0.0.0.0:${port}/api/rt`);
+  console.log(`❤️ [SUCCESS] Health em http://0.0.0.0:${port}/api/v1/health`);
 }
 
 bootstrap().catch((error) => {
