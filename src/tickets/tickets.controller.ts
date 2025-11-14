@@ -1,24 +1,24 @@
 import {
+  Body,
   Controller,
   Get,
-  Post,
-  Body,
   Param,
+  Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
 import {
-  ApiTags,
+  ApiBearerAuth,
   ApiOperation,
   ApiResponse,
-  ApiBearerAuth,
+  ApiTags,
 } from '@nestjs/swagger';
-import { TicketsService } from './tickets.service';
+import { CurrentAgent } from '../auth/decorators/current-agent.decorator';
+import { Public } from '../auth/decorators/public.decorator';
+import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
 import { CreateTicketDto } from '../common/dto/create-ticket.dto';
 import { UpdateCurrentCallingTokenDto } from '../common/dto/update-current-calling-token.dto';
-import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
-import { Public } from '../auth/decorators/public.decorator';
-import { CurrentAgent } from '../auth/decorators/current-agent.decorator';
+import { TicketsService } from './tickets.service';
 
 @ApiTags('tickets')
 @Controller()
@@ -101,6 +101,81 @@ export class TicketsController {
   @ApiResponse({ status: 404, description: 'Ticket não encontrado' })
   async findOne(@Param('id') id: string) {
     return this.ticketsService.findOne(id);
+  }
+
+  @Get('tickets/:id/status')
+  @Public()
+  @ApiOperation({
+    summary: 'Consultar status detalhado da senha com tempo estimado',
+    description:
+      'Endpoint público para consultar status da senha, posição na fila e tempo estimado para ser chamado. Usa tempo médio real dos últimos atendimentos.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Status detalhado da senha com tempo estimado',
+    schema: {
+      type: 'object',
+      properties: {
+        ticket: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            myCallingToken: { type: 'string' },
+            status: { type: 'string' },
+            priority: { type: 'number' },
+            createdAt: { type: 'string' },
+            calledAt: { type: 'string', nullable: true },
+            completedAt: { type: 'string', nullable: true },
+          },
+        },
+        queue: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            queueType: { type: 'string' },
+          },
+        },
+        position: {
+          type: 'number',
+          description: 'Posição na fila (0 se já foi chamado)',
+        },
+        avgServiceTimeReal: {
+          type: 'number',
+          nullable: true,
+          description:
+            'Tempo médio real de atendimento calculado com base nas últimas chamadas (em segundos). Null se não houver dados históricos.',
+        },
+        avgServiceTimeRealMinutes: {
+          type: 'number',
+          nullable: true,
+          description: 'Tempo médio real de atendimento em minutos',
+        },
+        estimatedTimeToCall: {
+          type: 'number',
+          description:
+            'Tempo estimado em segundos para ser chamado. Calculado usando tempo médio real dos últimos atendimentos.',
+        },
+        estimatedTimeToCallMinutes: {
+          type: 'number',
+          description:
+            'Tempo estimado em minutos para ser chamado. Calculado usando tempo médio real dos últimos atendimentos.',
+        },
+        currentTicket: {
+          type: 'string',
+          nullable: true,
+          description: 'Senha sendo atendida no momento',
+        },
+        isBeingServed: { type: 'boolean' },
+        isWaiting: { type: 'boolean' },
+        isCompleted: { type: 'boolean' },
+        lastUpdated: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Ticket não encontrado' })
+  async getTicketStatus(@Param('id') id: string) {
+    return this.ticketsService.getTicketStatusWithEstimate(id);
   }
 
   @Get('queues/:queueId/status')

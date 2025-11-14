@@ -1,14 +1,15 @@
 import {
-  Injectable,
-  NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Injectable,
+  NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CreateTicketDto } from '../common/dto/create-ticket.dto';
 import { TicketStatus } from '@prisma/client';
+import { CreateTicketDto } from '../common/dto/create-ticket.dto';
 import { EventsGateway } from '../events/events.gateway';
 import { EventsService } from '../events/events.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { SmsService } from '../sms/sms.service';
 
 @Injectable()
 export class TicketsService {
@@ -16,6 +17,7 @@ export class TicketsService {
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
     private eventsService: EventsService,
+    private smsService: SmsService,
   ) {}
 
   async create(
@@ -25,14 +27,42 @@ export class TicketsService {
   ) {
     const queue = await this.prisma.queue.findUnique({
       where: { id: queueId },
-      include: { tickets: true },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+        capacity: true,
+        avgServiceTime: true,
+        queueType: true,
+        tenant: {
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+          },
+        },
+        tickets: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+      },
     });
 
     if (!queue) {
       throw new NotFoundException('Fila não encontrada');
     }
 
-    if (!queue.isActive) {
+    if (!queue.tenant) {
+      throw new BadRequestException('Tenant não encontrado para esta fila');
+    }
+
+    if (queue.tenant.isActive !== true) {
+      throw new BadRequestException('Tenant não está ativo');
+    }
+
+    if (queue.isActive !== true) {
       throw new BadRequestException('Fila não está ativa');
     }
 
@@ -61,14 +91,20 @@ export class TicketsService {
       queue.avgServiceTime,
     );
 
+    const ticketData = {
+      clientName: createTicketDto.clientName ?? null,
+      clientPhone: createTicketDto.clientPhone ?? null,
+      clientEmail: createTicketDto.clientEmail ?? null,
+      priority: createTicketDto.priority ?? 1,
+      queueId,
+      myCallingToken: nextToken,
+      estimatedTime,
+      userId: userId || null,
+      status: TicketStatus.WAITING,
+    };
+
     const ticket = await this.prisma.ticket.create({
-      data: {
-        ...createTicketDto,
-        queueId,
-        myCallingToken: nextToken,
-        estimatedTime,
-        userId: userId || null,
-      },
+      data: ticketData,
       include: {
         queue: {
           include: {
@@ -97,6 +133,19 @@ export class TicketsService {
       },
     );
 
+    // 📱 ENVIAR SMS DE CONFIRMAÇÃO DE ENTRADA NA FILA
+    if (ticket.clientPhone && this.smsService.isConfigured()) {
+      try {
+        await this.smsService.sendQueueNotification(
+          ticket.clientPhone,
+          queue.name,
+          waitingTickets.length + 1,
+        );
+      } catch (error) {
+        console.error('Erro ao enviar SMS de confirmação:', error);
+      }
+    }
+
     return ticket;
   }
 
@@ -123,6 +172,164 @@ export class TicketsService {
       ...ticket,
       position,
       estimatedTime: updatedEstimatedTime,
+    };
+  }
+
+  async getTicketStatusWithEstimate(id: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      include: {
+        queue: {
+          include: {
+            tenant: true,
+          },
+        },
+        user: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket não encontrado');
+    }
+
+    let position = 0;
+    let estimatedTimeToCall = 0;
+    let currentTicket = null;
+    let avgServiceTimeReal = null;
+
+    if (ticket.status === TicketStatus.WAITING) {
+      const waitingTickets = await this.prisma.ticket.findMany({
+        where: {
+          queueId: ticket.queueId,
+          status: TicketStatus.WAITING,
+        },
+        orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+      });
+
+      position = waitingTickets.findIndex((t) => t.id === ticket.id) + 1;
+
+      if (position > 0) {
+        try {
+          const threeHoursAgo = new Date();
+          threeHoursAgo.setHours(threeHoursAgo.getHours() - 3);
+
+          const result = await this.prisma.$queryRaw<
+            Array<{ avg_recent_service_time: number | null }>
+          >`
+            SELECT
+              AVG((metadata->>'serviceTime')::numeric)::integer as avg_recent_service_time
+            FROM queue_ticket_history
+            WHERE "queueId" = ${ticket.queueId}
+              AND action = 'COMPLETED'
+              AND "calledAt" >= ${threeHoursAgo}
+              AND metadata->>'serviceTime' IS NOT NULL
+              AND (metadata->>'serviceTime')::numeric > 0
+          `;
+
+          avgServiceTimeReal = result[0]?.avg_recent_service_time;
+
+          if (avgServiceTimeReal && avgServiceTimeReal > 0) {
+            estimatedTimeToCall = position * avgServiceTimeReal;
+          } else {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+            const result7Days = await this.prisma.$queryRaw<
+              Array<{ avg_service_time: number | null }>
+            >`
+              SELECT
+                AVG((metadata->>'serviceTime')::numeric)::integer as avg_service_time
+              FROM queue_ticket_history
+              WHERE "queueId" = ${ticket.queueId}
+                AND action = 'COMPLETED'
+                AND "calledAt" >= ${sevenDaysAgo}
+                AND metadata->>'serviceTime' IS NOT NULL
+                AND (metadata->>'serviceTime')::numeric > 0
+            `;
+
+            avgServiceTimeReal = result7Days[0]?.avg_service_time;
+
+            if (avgServiceTimeReal && avgServiceTimeReal > 0) {
+              estimatedTimeToCall = position * avgServiceTimeReal;
+            } else {
+              estimatedTimeToCall = 0;
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao calcular tempo estimado:', error);
+          estimatedTimeToCall = 0;
+        }
+      }
+    } else if (ticket.status === TicketStatus.CALLED) {
+      estimatedTimeToCall = 0;
+      currentTicket = ticket.myCallingToken;
+    }
+
+    if (!avgServiceTimeReal) {
+      try {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const result = await this.prisma.$queryRaw<
+          Array<{ avg_service_time: number | null }>
+        >`
+          SELECT
+            AVG((metadata->>'serviceTime')::numeric)::integer as avg_service_time
+          FROM queue_ticket_history
+          WHERE "queueId" = ${ticket.queueId}
+            AND action = 'COMPLETED'
+            AND "calledAt" >= ${sevenDaysAgo}
+            AND metadata->>'serviceTime' IS NOT NULL
+            AND (metadata->>'serviceTime')::numeric > 0
+        `;
+
+        avgServiceTimeReal = result[0]?.avg_service_time || null;
+      } catch (error) {
+        console.error('Erro ao calcular tempo médio:', error);
+      }
+    }
+
+    const currentCalledTicket = await this.prisma.ticket.findFirst({
+      where: {
+        queueId: ticket.queueId,
+        status: TicketStatus.CALLED,
+      },
+      orderBy: { calledAt: 'desc' },
+      select: {
+        myCallingToken: true,
+        calledAt: true,
+      },
+    });
+
+    return {
+      ticket: {
+        id: ticket.id,
+        myCallingToken: ticket.myCallingToken,
+        status: ticket.status,
+        priority: ticket.priority,
+        createdAt: ticket.createdAt,
+        calledAt: ticket.calledAt,
+        completedAt: ticket.completedAt,
+      },
+      queue: {
+        id: ticket.queue.id,
+        name: ticket.queue.name,
+        queueType: ticket.queue.queueType,
+      },
+      position,
+      avgServiceTimeReal: avgServiceTimeReal
+        ? Math.round(avgServiceTimeReal)
+        : null,
+      avgServiceTimeRealMinutes: avgServiceTimeReal
+        ? Math.round(avgServiceTimeReal / 60)
+        : null,
+      estimatedTimeToCall,
+      estimatedTimeToCallMinutes: Math.round(estimatedTimeToCall / 60),
+      currentTicket: currentCalledTicket?.myCallingToken || null,
+      isBeingServed: ticket.status === TicketStatus.CALLED,
+      isWaiting: ticket.status === TicketStatus.WAITING,
+      isCompleted: ticket.status === TicketStatus.COMPLETED,
+      lastUpdated: new Date(),
     };
   }
 
@@ -181,9 +388,9 @@ export class TicketsService {
       );
     }
 
-    // Se um agente está tentando completar o ticket, verificar se pertence ao tenant
+    let agent = null;
     if (currentAgentId) {
-      const agent = await this.prisma.agent.findUnique({
+      agent = await this.prisma.agent.findUnique({
         where: { id: currentAgentId },
       });
 
@@ -198,16 +405,54 @@ export class TicketsService {
       }
     }
 
-    return this.prisma.ticket.update({
+    const completedAt = new Date();
+    const serviceTime = ticket.calledAt
+      ? Math.floor((completedAt.getTime() - ticket.calledAt.getTime()) / 1000)
+      : null;
+
+    const updatedTicket = await this.prisma.ticket.update({
       where: { id },
       data: {
         status: TicketStatus.COMPLETED,
-        completedAt: new Date(),
+        completedAt,
       },
       include: {
         queue: true,
       },
     });
+
+    if (agent && ticket.calledAt) {
+      try {
+        const counter = await this.prisma.counter.findFirst({
+          where: {
+            tenantId: agent.tenantId,
+            isActive: true,
+          },
+          orderBy: {
+            number: 'asc',
+          },
+        });
+
+        if (counter) {
+          await this.prisma.callLog.create({
+            data: {
+              id: `cl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              action: 'COMPLETED',
+              calledAt: ticket.calledAt,
+              serviceTime: serviceTime,
+              ticketId: ticket.id,
+              queueId: ticket.queueId,
+              agentId: agent.id,
+              counterId: counter.id,
+            },
+          });
+        }
+      } catch (error) {
+        console.error('Erro ao criar CallLog:', error);
+      }
+    }
+
+    return updatedTicket;
   }
 
   async updateCurrentCallingToken(
@@ -271,9 +516,9 @@ export class TicketsService {
 
   private calculateEstimatedTime(
     position: number,
-    avgServiceTime: number,
+    avgServiceTime: number | null,
   ): number {
-    return position * avgServiceTime;
+    return position * (avgServiceTime || 300);
   }
 
   private async getTicketPosition(
@@ -307,14 +552,15 @@ export class TicketsService {
   }
 
   private getQueuePrefix(queue: any): string {
-    // Determinar prefixo baseado no nome da fila ou tipo
-    const name = queue.name.toLowerCase();
-    if (name.includes('exame')) return 'B';
-    if (name.includes('consulta')) return 'N';
-    if (name.includes('pediatria')) return 'P';
-    if (name.includes('urgencia')) return 'U';
-    // Padrão: primeira letra do nome
-    return queue.name.charAt(0).toUpperCase();
+    let prefix = 'G';
+
+    if (queue.queueType === 'PRIORITY') {
+      prefix = 'P';
+    } else if (queue.queueType === 'VIP') {
+      prefix = 'V';
+    }
+
+    return prefix;
   }
 
   private extractNumberFromToken(token?: string): number {
@@ -357,7 +603,7 @@ export class TicketsService {
       tenantName: queue.tenant.name,
       currentCallingToken,
       totalWaiting: queue.tickets.length,
-      estimatedWaitTime: queue.tickets.length * queue.avgServiceTime,
+      estimatedWaitTime: queue.tickets.length * (queue.avgServiceTime || 300),
       lastUpdated: new Date(),
     };
   }
