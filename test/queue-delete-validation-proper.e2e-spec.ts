@@ -4,10 +4,11 @@ import { ConfigModule } from '@nestjs/config';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { ERROR_CODES } from '../src/common/constants/error-codes';
 import * as bcrypt from 'bcrypt';
 import { cleanDatabase, teardownTestDatabase } from './setup-database';
 
-describe('QueuesController (e2e)', () => {
+describe('Queue Delete Validation (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenant: any;
@@ -43,20 +44,22 @@ describe('QueuesController (e2e)', () => {
   beforeEach(async () => {
     await cleanDatabase(prisma);
 
+    // Criar tenant para os testes
     tenant = await prisma.tenant.create({
       data: {
-        name: 'Empresa Teste',
-        slug: `empresa-teste-${Date.now()}`,
-        email: 'contato@empresa.com',
+        name: 'Empresa Teste Delete Queue',
+        slug: `empresa-teste-delete-${Date.now()}`,
+        email: `delete-test-${Date.now()}@empresa.com`,
       },
     });
 
-    const agentCpf = `1234567890${Date.now()}`.slice(-11); // Garantir exatamente 11 dígitos
+    // Criar agente para autenticação
+    const agentCpf = `1234567890${Date.now()}`.slice(-11);
 
     await prisma.agent.create({
       data: {
-        email: `admin-${Date.now()}@empresa.com`,
-        name: 'Admin Teste',
+        email: `admin-delete-${Date.now()}@empresa.com`,
+        name: 'Admin Delete Test',
         password: await bcrypt.hash('senha123', 10),
         role: 'ADMINISTRADOR',
         tenantId: tenant.id,
@@ -64,6 +67,7 @@ describe('QueuesController (e2e)', () => {
       },
     });
 
+    // Fazer login para obter token
     const loginResponse = await request(app.getHttpServer())
       .post('/api/v1/auth/agent/login')
       .send({
@@ -79,12 +83,11 @@ describe('QueuesController (e2e)', () => {
     await app.close();
   });
 
-  describe('/tenants/:tenantId/queues (GET)', () => {
-    it('deve listar filas do tenant', async () => {
+  describe('DELETE /tenants/:tenantId/queues/:id', () => {
+    it('deve permitir deletar fila sem tickets ativos', async () => {
       // Criar fila via API
       const queueData = {
-        name: 'Fila Teste',
-        description: 'Descrição da fila teste',
+        name: 'Fila Para Deletar',
         queueType: 'GENERAL',
       };
 
@@ -96,127 +99,7 @@ describe('QueuesController (e2e)', () => {
 
       const queue = createResponse.body;
 
-      // Listar filas
-      const response = await request(app.getHttpServer())
-        .get(`/api/v1/tenants/${tenant.id}/queues`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
-
-      expect(response.body).toHaveLength(1);
-      expect(response.body[0].name).toBe('Fila Teste');
-      expect(response.body[0].id).toBe(queue.id);
-    });
-
-    it('deve retornar lista vazia para tenant sem filas', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/api/v1/tenants/${tenant.id}/queues`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
-
-      expect(response.body).toHaveLength(0);
-    });
-  });
-
-  describe('/tenants/:tenantId/queues (POST)', () => {
-    it('deve criar nova fila com autenticação', async () => {
-      const queueData = {
-        name: 'Nova Fila',
-        description: 'Descrição da nova fila',
-        queueType: 'PRIORITY',
-        capacity: 30,
-        avgServiceTime: 600,
-      };
-
-      const response = await request(app.getHttpServer())
-        .post(`/api/v1/tenants/${tenant.id}/queues`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(queueData)
-        .expect(201);
-
-      expect(response.body.name).toBe(queueData.name);
-      expect(response.body.queueType).toBe(queueData.queueType);
-      expect(response.body.capacity).toBe(queueData.capacity);
-      expect(response.body.tenantId).toBe(tenant.id);
-    });
-
-    it('deve rejeitar criação sem autenticação', async () => {
-      const queueData = {
-        name: 'Nova Fila',
-        description: 'Descrição da nova fila',
-      };
-
-      await request(app.getHttpServer())
-        .post(`/api/v1/tenants/${tenant.id}/queues`)
-        .send(queueData)
-        .expect(401);
-    });
-
-    it('deve validar dados da fila', async () => {
-      const queueData = {
-        name: 'A',
-        capacity: -1,
-      };
-
-      await request(app.getHttpServer())
-        .post(`/api/v1/tenants/${tenant.id}/queues`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(queueData)
-        .expect(400);
-    });
-  });
-
-  describe('/tenants/:tenantId/queues/:id (GET)', () => {
-    it('deve buscar fila específica', async () => {
-      // Criar fila via API
-      const queueData = {
-        name: 'Fila Específica',
-        queueType: 'VIP',
-      };
-
-      const createResponse = await request(app.getHttpServer())
-        .post(`/api/v1/tenants/${tenant.id}/queues`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(queueData)
-        .expect(201);
-
-      const queue = createResponse.body;
-
-      const response = await request(app.getHttpServer())
-        .get(`/api/v1/tenants/${tenant.id}/queues/${queue.id}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
-
-      expect(response.body.id).toBe(queue.id);
-      expect(response.body.name).toBe('Fila Específica');
-      expect(response.body.queueType).toBe('VIP');
-    });
-
-    it('deve retornar 404 para fila inexistente', async () => {
-      const fakeId = '507f1f77bcf86cd799439011';
-
-      await request(app.getHttpServer())
-        .get(`/api/v1/tenants/${tenant.id}/queues/${fakeId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(404);
-    });
-  });
-
-  describe('/tenants/:tenantId/queues/:id (DELETE)', () => {
-    it('deve deletar fila sem tickets ativos', async () => {
-      // Criar fila via API
-      const queueData = {
-        name: 'Fila para Deletar',
-        queueType: 'GENERAL',
-      };
-
-      const createResponse = await request(app.getHttpServer())
-        .post(`/api/v1/tenants/${tenant.id}/queues`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(queueData)
-        .expect(201);
-
-      const queue = createResponse.body;
-
+      // Deletar fila
       const deleteResponse = await request(app.getHttpServer())
         .delete(`/api/v1/tenants/${tenant.id}/queues/${queue.id}`)
         .set('Authorization', `Bearer ${authToken}`)
@@ -225,10 +108,10 @@ describe('QueuesController (e2e)', () => {
       expect(deleteResponse.body.isActive).toBe(false);
     });
 
-    it('deve retornar erro ao tentar deletar fila com tickets aguardando', async () => {
+    it('deve retornar QUEUE_HAS_ACTIVE_TICKETS ao tentar deletar fila com ticket WAITING', async () => {
       // Criar fila via API
       const queueData = {
-        name: 'Fila com Tickets',
+        name: 'Fila Com Ticket Waiting',
         queueType: 'GENERAL',
       };
 
@@ -240,7 +123,7 @@ describe('QueuesController (e2e)', () => {
 
       const queue = createQueueResponse.body;
 
-      // Criar ticket na fila
+      // Criar ticket na fila via API
       const ticketData = {
         clientName: 'Cliente Teste',
         clientPhone: '(11) 99999-0000',
@@ -249,7 +132,6 @@ describe('QueuesController (e2e)', () => {
 
       await request(app.getHttpServer())
         .post(`/api/v1/queues/${queue.id}/tickets`)
-        .set('Authorization', `Bearer ${authToken}`)
         .send(ticketData)
         .expect(201);
 
@@ -259,13 +141,15 @@ describe('QueuesController (e2e)', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(400);
 
-      expect(deleteResponse.body.message).toBe('QUEUE_HAS_ACTIVE_TICKETS');
+      expect(deleteResponse.body.message).toBe(
+        ERROR_CODES.QUEUE_HAS_ACTIVE_TICKETS,
+      );
     });
 
-    it('deve retornar erro ao tentar deletar fila com tickets chamados', async () => {
+    it('deve retornar QUEUE_HAS_ACTIVE_TICKETS ao tentar deletar fila com ticket CALLED', async () => {
       // Criar fila via API
       const queueData = {
-        name: 'Fila com Tickets Chamados',
+        name: 'Fila Com Ticket Called',
         queueType: 'GENERAL',
       };
 
@@ -277,7 +161,7 @@ describe('QueuesController (e2e)', () => {
 
       const queue = createQueueResponse.body;
 
-      // Criar ticket na fila
+      // Criar ticket na fila via API
       const ticketData = {
         clientName: 'Cliente Teste',
         clientPhone: '(11) 99999-0000',
@@ -286,11 +170,10 @@ describe('QueuesController (e2e)', () => {
 
       await request(app.getHttpServer())
         .post(`/api/v1/queues/${queue.id}/tickets`)
-        .set('Authorization', `Bearer ${authToken}`)
         .send(ticketData)
         .expect(201);
 
-      // Chamar o ticket
+      // Chamar o ticket para mudar status para CALLED
       await request(app.getHttpServer())
         .post(`/api/v1/tenants/${tenant.id}/queues/${queue.id}/call-next`)
         .set('Authorization', `Bearer ${authToken}`)
@@ -302,13 +185,15 @@ describe('QueuesController (e2e)', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(400);
 
-      expect(deleteResponse.body.message).toBe('QUEUE_HAS_ACTIVE_TICKETS');
+      expect(deleteResponse.body.message).toBe(
+        ERROR_CODES.QUEUE_HAS_ACTIVE_TICKETS,
+      );
     });
 
-    it('deve permitir deletar fila com tickets concluídos', async () => {
+    it('deve permitir deletar fila com ticket COMPLETED', async () => {
       // Criar fila via API
       const queueData = {
-        name: 'Fila com Tickets Concluídos',
+        name: 'Fila Com Ticket Completed',
         queueType: 'GENERAL',
       };
 
@@ -320,7 +205,7 @@ describe('QueuesController (e2e)', () => {
 
       const queue = createQueueResponse.body;
 
-      // Criar ticket na fila
+      // Criar ticket na fila via API
       const ticketData = {
         clientName: 'Cliente Teste',
         clientPhone: '(11) 99999-0000',
@@ -329,16 +214,15 @@ describe('QueuesController (e2e)', () => {
 
       const createTicketResponse = await request(app.getHttpServer())
         .post(`/api/v1/queues/${queue.id}/tickets`)
-        .set('Authorization', `Bearer ${authToken}`)
         .send(ticketData)
         .expect(201);
 
       const ticket = createTicketResponse.body;
 
       // Marcar ticket como concluído diretamente no banco
-      await testHelper.getPrisma().ticket.update({
+      await prisma.ticket.update({
         where: { id: ticket.id },
-        data: { 
+        data: {
           status: 'COMPLETED',
           completedAt: new Date(),
         },
@@ -352,13 +236,12 @@ describe('QueuesController (e2e)', () => {
 
       expect(deleteResponse.body.isActive).toBe(false);
     });
-  });
 
-  describe('/tenants/:tenantId/queues/:id/call-next (POST)', () => {
-    it('deve chamar próximo da fila', async () => {
+    it('deve permitir deletar fila com ticket NO_SHOW', async () => {
       // Criar fila via API
       const queueData = {
-        name: 'Fila para Chamar',
+        name: 'Fila Com Ticket NoShow',
+        queueType: 'GENERAL',
       };
 
       const createQueueResponse = await request(app.getHttpServer())
@@ -369,7 +252,7 @@ describe('QueuesController (e2e)', () => {
 
       const queue = createQueueResponse.body;
 
-      // Criar ticket via API
+      // Criar ticket na fila via API
       const ticketData = {
         clientName: 'Cliente Teste',
         clientPhone: '(11) 99999-0000',
@@ -378,26 +261,33 @@ describe('QueuesController (e2e)', () => {
 
       const createTicketResponse = await request(app.getHttpServer())
         .post(`/api/v1/queues/${queue.id}/tickets`)
-        .set('Authorization', `Bearer ${authToken}`)
         .send(ticketData)
         .expect(201);
 
       const ticket = createTicketResponse.body;
 
-      const response = await request(app.getHttpServer())
-        .post(`/api/v1/tenants/${tenant.id}/queues/${queue.id}/call-next`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(201);
+      // Marcar ticket como NO_SHOW diretamente no banco
+      await prisma.ticket.update({
+        where: { id: ticket.id },
+        data: {
+          status: 'NO_SHOW',
+        },
+      });
 
-      expect(response.body.id).toBe(ticket.id);
-      expect(response.body.status).toBe('CALLED');
-      expect(response.body.calledAt).toBeDefined();
+      // Agora deve permitir deletar a fila
+      const deleteResponse = await request(app.getHttpServer())
+        .delete(`/api/v1/tenants/${tenant.id}/queues/${queue.id}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+
+      expect(deleteResponse.body.isActive).toBe(false);
     });
 
-    it('deve retornar erro quando não há tickets na fila', async () => {
+    it('deve retornar QUEUE_HAS_ACTIVE_TICKETS para fila com múltiplos tickets incluindo ativos', async () => {
       // Criar fila via API
       const queueData = {
-        name: 'Fila Vazia',
+        name: 'Fila Com Múltiplos Tickets',
+        queueType: 'GENERAL',
       };
 
       const createQueueResponse = await request(app.getHttpServer())
@@ -408,10 +298,71 @@ describe('QueuesController (e2e)', () => {
 
       const queue = createQueueResponse.body;
 
-      await request(app.getHttpServer())
-        .post(`/api/v1/tenants/${tenant.id}/queues/${queue.id}/call-next`)
+      // Criar múltiplos tickets diretamente no banco para ter controle total dos status
+      await prisma.ticket.createMany({
+        data: [
+          {
+            queueId: queue.id,
+            myCallingToken: 'A001',
+            status: 'COMPLETED',
+            completedAt: new Date(),
+          },
+          { queueId: queue.id, myCallingToken: 'A002', status: 'NO_SHOW' },
+          { queueId: queue.id, myCallingToken: 'A003', status: 'CANCELLED' },
+          { queueId: queue.id, myCallingToken: 'A004', status: 'WAITING' }, // Este deve impedir a deleção
+        ],
+      });
+
+      // Tentar deletar fila com tickets ativos
+      const deleteResponse = await request(app.getHttpServer())
+        .delete(`/api/v1/tenants/${tenant.id}/queues/${queue.id}`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(404);
+        .expect(400);
+
+      expect(deleteResponse.body.message).toBe(
+        ERROR_CODES.QUEUE_HAS_ACTIVE_TICKETS,
+      );
+    });
+
+    it('deve permitir deletar fila com apenas tickets inativos (COMPLETED, NO_SHOW, CANCELLED)', async () => {
+      // Criar fila via API
+      const queueData = {
+        name: 'Fila Com Tickets Inativos',
+        queueType: 'GENERAL',
+      };
+
+      const createQueueResponse = await request(app.getHttpServer())
+        .post(`/api/v1/tenants/${tenant.id}/queues`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(queueData)
+        .expect(201);
+
+      const queue = createQueueResponse.body;
+
+      // Criar múltiplos tickets inativos diretamente no banco
+      await prisma.ticket.createMany({
+        data: [
+          {
+            queueId: queue.id,
+            myCallingToken: 'B001',
+            status: 'COMPLETED',
+            completedAt: new Date(),
+          },
+          { queueId: queue.id, myCallingToken: 'B002', status: 'NO_SHOW' },
+          { queueId: queue.id, myCallingToken: 'B003', status: 'CANCELLED' },
+        ],
+      });
+
+      // Deve permitir deletar a fila
+      const deleteResponse = await request(app.getHttpServer())
+        .delete(`/api/v1/tenants/${tenant.id}/queues/${queue.id}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+
+      expect(deleteResponse.body.isActive).toBe(false);
     });
   });
 });
+
+
+

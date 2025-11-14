@@ -6,6 +6,13 @@
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
+  "testPathIgnorePatterns": [
+    "node_modules/",
+    "dist/"
+  ],
+  "transformIgnorePatterns": [
+    "node_modules/(?!(@igniter-js|chalk)/)"
+  ],
   "maxWorkers": 1,
   "detectOpenHandles": true,
   "forceExit": true,

@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "queues" ALTER COLUMN "avgServiceTime" DROP DEFAULT;
+ALTER TABLE "queues" ALTER COLUMN "avgServiceTime" DROP NOT NULL;
+ALTER TABLE "queues" ALTER COLUMN "capacity" DROP DEFAULT;
+ALTER TABLE "queues" ALTER COLUMN "capacity" DROP NOT NULL;

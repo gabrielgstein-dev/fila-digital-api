@@ -76,7 +76,7 @@ async function insertDefaultUsers() {
           cpf: '00000000002',
           name: 'Atendente Padrão',
           password: hashedPassword,
-          role: 'ATTENDANT',
+          role: 'OPERADOR',
           isActive: true,
           isDefault: true,
           isProtected: true,
