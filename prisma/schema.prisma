@@ -47,8 +47,10 @@ model Ticket {
   priority       Int          @default(1)
   status         TicketStatus @default(WAITING)
   clientName     String?
+  clientCpf       String?
   clientPhone    String?
   clientEmail    String?
+  telegramChatId String?
   estimatedTime  Int?
   calledAt       DateTime?
   completedAt    DateTime?

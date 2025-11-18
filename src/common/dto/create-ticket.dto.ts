@@ -1,13 +1,13 @@
-import {
-  IsString,
-  IsOptional,
-  IsInt,
-  Min,
-  Max,
-  IsEmail,
-  MaxLength,
-} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsEmail,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class CreateTicketDto {
   @ApiPropertyOptional({ description: 'Nome do cliente' })
@@ -15,6 +15,12 @@ export class CreateTicketDto {
   @IsString()
   @MaxLength(100)
   clientName?: string;
+
+  @ApiPropertyOptional({ description: 'CPF do cliente' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(11)
+  clientCpf?: string;
 
   @ApiPropertyOptional({ description: 'Telefone do cliente' })
   @IsOptional()
@@ -26,6 +32,11 @@ export class CreateTicketDto {
   @IsOptional()
   @IsEmail()
   clientEmail?: string;
+
+  @ApiPropertyOptional({ description: 'Chat ID do Telegram' })
+  @IsOptional()
+  @IsString()
+  telegramChatId?: string;
 
   @ApiPropertyOptional({
     description: 'Prioridade do ticket',
