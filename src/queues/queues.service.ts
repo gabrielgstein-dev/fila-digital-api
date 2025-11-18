@@ -1,21 +1,30 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { TicketStatus } from '@prisma/client';
 import { ERROR_CODES } from '../common/constants/error-codes';
 import { CreateQueueDto } from '../common/dto/create-queue.dto';
 import { TicketNotificationService } from '../messaging/ticket-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { SmsService } from '../sms/sms.service';
+import { TelegramService } from '../telegram/telegram.service';
+import { WhatsAppQueueService } from '../whatsapp/whatsapp-queue.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 @Injectable()
 export class QueuesService {
   constructor(
     private prisma: PrismaService,
     private ticketNotificationService: TicketNotificationService,
-    private smsService: SmsService,
+    private configService: ConfigService,
+    private whatsappService: WhatsAppService,
+    private whatsappQueueService: WhatsAppQueueService,
+    @Inject(forwardRef(() => TelegramService))
+    private telegramService: TelegramService,
   ) {}
 
   async create(tenantId: string, createQueueDto: CreateQueueDto) {
@@ -228,16 +237,18 @@ export class QueuesService {
       console.error('Erro ao enviar notificação:', error);
     }
 
-    // 📱 ENVIAR NOTIFICAÇÃO SMS
-    if (updatedTicket.clientPhone && this.smsService.isConfigured()) {
+    // 📱 ENVIAR NOTIFICAÇÃO TELEGRAM
+    const telegramChatId = (updatedTicket as { telegramChatId?: string })
+      .telegramChatId;
+    if (telegramChatId && this.telegramService.isConfigured()) {
       try {
-        await this.smsService.sendCallNotification(
-          updatedTicket.clientPhone,
-          updatedTicket.queue.name,
+        await this.telegramService.sendTicketNotification(
+          telegramChatId,
           updatedTicket.myCallingToken,
+          updatedTicket.queue.name,
         );
       } catch (error) {
-        console.error('Erro ao enviar SMS:', error);
+        console.error('Erro ao enviar notificação Telegram:', error);
       }
     }
 
@@ -246,7 +257,145 @@ export class QueuesService {
       `📡 Notificação SSE disparada automaticamente via trigger para fila ${queueId}`,
     );
 
+    await this.notifyWaitingTicketsUpTo3Positions(queue.id);
+
     return updatedTicket;
+  }
+
+  private async notifyWaitingTicketsUpTo3Positions(queueId: string) {
+    try {
+      const queue = await this.prisma.queue.findUnique({
+        where: { id: queueId },
+        include: {
+          tenant: true,
+        },
+      });
+
+      if (!queue) {
+        return;
+      }
+
+      const waitingTickets = await this.prisma.ticket.findMany({
+        where: {
+          queueId,
+          status: TicketStatus.WAITING,
+        },
+        orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+        take: 3,
+        include: {
+          queue: {
+            include: {
+              tenant: true,
+            },
+          },
+        },
+      });
+
+      if (waitingTickets.length === 0) {
+        return;
+      }
+
+      let avgServiceTimeReal: number | null = null;
+
+      try {
+        const threeHoursAgo = new Date();
+        threeHoursAgo.setHours(threeHoursAgo.getHours() - 3);
+
+        const result = await this.prisma.$queryRaw<
+          Array<{ avg_recent_service_time: number | null }>
+        >`
+          SELECT
+            AVG((metadata->>'serviceTime')::numeric)::integer as avg_recent_service_time
+          FROM queue_ticket_history
+          WHERE "queueId" = ${queueId}
+            AND action = 'COMPLETED'
+            AND "calledAt" >= ${threeHoursAgo}
+            AND metadata->>'serviceTime' IS NOT NULL
+            AND (metadata->>'serviceTime')::numeric > 0
+        `;
+
+        avgServiceTimeReal = result[0]?.avg_recent_service_time;
+
+        if (!avgServiceTimeReal || avgServiceTimeReal <= 0) {
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+          const result7Days = await this.prisma.$queryRaw<
+            Array<{ avg_service_time: number | null }>
+          >`
+            SELECT
+              AVG((metadata->>'serviceTime')::numeric)::integer as avg_service_time
+            FROM queue_ticket_history
+            WHERE "queueId" = ${queueId}
+              AND action = 'COMPLETED'
+              AND "calledAt" >= ${sevenDaysAgo}
+              AND metadata->>'serviceTime' IS NOT NULL
+              AND (metadata->>'serviceTime')::numeric > 0
+          `;
+
+          avgServiceTimeReal = result7Days[0]?.avg_service_time;
+        }
+      } catch (error) {
+        console.error('Erro ao calcular tempo médio real:', error);
+      }
+
+      const avgServiceTime = avgServiceTimeReal || queue.avgServiceTime || 300;
+      const baseUrl =
+        this.configService.get<string>('FRONTEND_URL') ||
+        'http://localhost:3000';
+
+      for (let i = 0; i < waitingTickets.length; i++) {
+        const ticket = waitingTickets[i];
+        const position = i + 1;
+        const estimatedTimeSeconds = position * avgServiceTime;
+        const estimatedMinutes = Math.ceil(estimatedTimeSeconds / 60);
+
+        if (ticket.clientPhone && this.whatsappService.isConfigured()) {
+          try {
+            this.whatsappQueueService
+              .enqueuePositionUpdate(
+                ticket.clientPhone,
+                ticket.queue.tenant.name,
+                ticket.myCallingToken,
+                position,
+                estimatedMinutes,
+                ticket.id,
+                baseUrl,
+                ticket.clientName || undefined,
+                ticket.queue.name,
+              )
+              .then((result) => {
+                if (result.success) {
+                  console.log(
+                    `✅ Atualização de posição WhatsApp enviada para ${ticket.clientPhone} - Senha: ${ticket.myCallingToken}`,
+                  );
+                } else {
+                  console.error(
+                    `❌ Erro ao enviar atualização de posição WhatsApp para ${ticket.clientPhone}:`,
+                    result.error,
+                  );
+                }
+              })
+              .catch((error) => {
+                console.error(
+                  `❌ Erro ao enviar atualização de posição WhatsApp para ticket ${ticket.id}:`,
+                  error,
+                );
+              });
+          } catch (error) {
+            console.error(
+              `❌ Erro ao adicionar atualização de posição à fila WhatsApp para ticket ${ticket.id}:`,
+              error,
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        'Erro ao notificar tickets aguardando sobre atualização de posição:',
+        error,
+      );
+    }
   }
 
   async getQueueStats(tenantId: string, queueId: string) {
@@ -461,7 +610,16 @@ export class QueuesService {
     }
 
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const apiUrl =
+      process.env.API_URL ||
+      process.env.FRONTEND_URL ||
+      'http://localhost:3001';
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME;
+
     const qrCodeUrl = `${baseUrl}/queue/${queue.id}`;
+    const telegramDeepLink = botUsername
+      ? `https://t.me/${botUsername}?start=queue_${queue.id}`
+      : null;
 
     const qrCodeDataUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCodeUrl)}`;
 
@@ -471,6 +629,8 @@ export class QueuesService {
       tenantName: queue.tenant.name,
       qrCodeUrl: qrCodeDataUrl,
       directUrl: qrCodeUrl,
+      telegramDeepLink,
+      apiJoinUrl: `${apiUrl}/api/v1/queues/${queue.id}/join-telegram`,
       createdAt: new Date(),
     };
   }
@@ -512,19 +672,6 @@ export class QueuesService {
       clientEmail: updatedTicket.clientEmail,
       userId: updatedTicket.userId,
     });
-
-    // 📱 ENVIAR SMS DE RECHAMADA
-    if (updatedTicket.clientPhone && this.smsService.isConfigured()) {
-      try {
-        await this.smsService.sendCallNotification(
-          updatedTicket.clientPhone,
-          updatedTicket.queue.name,
-          updatedTicket.myCallingToken,
-        );
-      } catch (error) {
-        console.error('Erro ao enviar SMS de rechamada:', error);
-      }
-    }
 
     return {
       message: 'Ticket rechamado com sucesso',

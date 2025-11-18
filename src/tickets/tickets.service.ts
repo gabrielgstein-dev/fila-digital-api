@@ -1,15 +1,20 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { TicketStatus } from '@prisma/client';
 import { CreateTicketDto } from '../common/dto/create-ticket.dto';
 import { EventsGateway } from '../events/events.gateway';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { SmsService } from '../sms/sms.service';
+import { TelegramService } from '../telegram/telegram.service';
+import { WhatsAppQueueService } from '../whatsapp/whatsapp-queue.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 @Injectable()
 export class TicketsService {
@@ -17,7 +22,11 @@ export class TicketsService {
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
     private eventsService: EventsService,
-    private smsService: SmsService,
+    private configService: ConfigService,
+    @Inject(forwardRef(() => TelegramService))
+    private telegramService: TelegramService,
+    private whatsappService: WhatsAppService,
+    private whatsappQueueService: WhatsAppQueueService,
   ) {}
 
   async create(
@@ -93,8 +102,10 @@ export class TicketsService {
 
     const ticketData = {
       clientName: createTicketDto.clientName ?? null,
+      clientCpf: createTicketDto.clientCpf ?? null,
       clientPhone: createTicketDto.clientPhone ?? null,
       clientEmail: createTicketDto.clientEmail ?? null,
+      telegramChatId: createTicketDto.telegramChatId ?? null,
       priority: createTicketDto.priority ?? 1,
       queueId,
       myCallingToken: nextToken,
@@ -133,16 +144,103 @@ export class TicketsService {
       },
     );
 
-    // 📱 ENVIAR SMS DE CONFIRMAÇÃO DE ENTRADA NA FILA
-    if (ticket.clientPhone && this.smsService.isConfigured()) {
+    // 📱 ENVIAR NOTIFICAÇÃO TELEGRAM DE CONFIRMAÇÃO DE ENTRADA NA FILA
+    const telegramChatId = (ticket as { telegramChatId?: string })
+      .telegramChatId;
+    if (telegramChatId && this.telegramService.isConfigured()) {
       try {
-        await this.smsService.sendQueueNotification(
-          ticket.clientPhone,
-          queue.name,
+        const estimatedMinutes = Math.ceil(
+          ((waitingTickets.length + 1) * queue.avgServiceTime) / 60,
+        );
+        await this.telegramService.sendQueueStatusUpdate(
+          telegramChatId,
+          ticket.queue.tenant.name,
+          ticket.myCallingToken,
           waitingTickets.length + 1,
+          estimatedMinutes,
         );
       } catch (error) {
-        console.error('Erro ao enviar SMS de confirmação:', error);
+        console.error('Erro ao enviar notificação Telegram:', error);
+      }
+    }
+
+    // 📱 ENVIAR NOTIFICAÇÃO WHATSAPP VIA Z-API (com fila para evitar spam)
+    console.log(
+      '[WHATSAPP DEBUG] Verificando envio WhatsApp para ticket',
+      ticket.myCallingToken,
+    );
+    console.log('[WHATSAPP DEBUG] ticket.clientPhone:', ticket.clientPhone);
+    console.log(
+      '[WHATSAPP DEBUG] whatsappService.isConfigured():',
+      this.whatsappService.isConfigured(),
+    );
+
+    if (ticket.clientPhone && this.whatsappService.isConfigured()) {
+      console.log(
+        '📱 [WHATSAPP] Enviando notificação WhatsApp de entrada na fila',
+      );
+      console.log('📱 [WHATSAPP] Telefone:', ticket.clientPhone);
+      console.log('📱 [WHATSAPP] Senha:', ticket.myCallingToken);
+      console.log('📱 [WHATSAPP] Posição:', waitingTickets.length + 1);
+
+      try {
+        const position = waitingTickets.length + 1;
+        const estimatedMinutes = Math.ceil(
+          (position * queue.avgServiceTime) / 60,
+        );
+        const baseUrl =
+          this.configService.get<string>('FRONTEND_URL') ||
+          'http://localhost:3000';
+
+        console.log('📱 [WHATSAPP] Tempo estimado:', estimatedMinutes, 'min');
+        console.log('📱 [WHATSAPP] Adicionando mensagem à fila de envio...');
+
+        this.whatsappQueueService
+          .enqueue(
+            ticket.clientPhone,
+            ticket.queue.tenant.name,
+            ticket.myCallingToken,
+            position,
+            estimatedMinutes,
+            ticket.id,
+            baseUrl,
+            ticket.clientName || undefined,
+            queue.name,
+          )
+          .then((result) => {
+            if (result.success) {
+              console.log(
+                `✅ [WHATSAPP] Notificação WhatsApp enviada com sucesso para ${ticket.clientPhone} - Senha: ${ticket.myCallingToken}`,
+              );
+            } else {
+              console.error(
+                `❌ [WHATSAPP] Erro ao enviar WhatsApp para ${ticket.clientPhone}:`,
+                result.error,
+              );
+            }
+          })
+          .catch((error) => {
+            console.error(
+              `❌ [WHATSAPP] Erro ao enviar WhatsApp para ${ticket.clientPhone}:`,
+              error,
+            );
+          });
+      } catch (error) {
+        console.error(
+          `❌ [WHATSAPP] Erro ao adicionar WhatsApp à fila para ${ticket.clientPhone}:`,
+          error,
+        );
+      }
+    } else {
+      if (!ticket.clientPhone) {
+        console.log(
+          '⚠️ [WHATSAPP] Telefone não informado, WhatsApp não será enviado',
+        );
+      }
+      if (!this.whatsappService.isConfigured()) {
+        console.log(
+          '⚠️ [WHATSAPP] WhatsApp não está configurado (Z-API não configurado), mensagem não será enviada',
+        );
       }
     }
 
