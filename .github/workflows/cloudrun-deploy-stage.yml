@@ -19,7 +19,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
           # Extract version from tag
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "Tag detectada: $TAG_NAME"
-          
+
           if [[ "$TAG_NAME" == *"-stage" ]]; then
             echo "should_deploy=true" >> $GITHUB_OUTPUT
             echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
@@ -75,12 +75,12 @@ jobs:
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
         echo "🧹 Limpeza de cache Docker ANTES do build..."
-        
+
         # Limpar imagens Docker locais
         echo "🗑️ Limpando cache Docker local..."
         docker system prune -af --volumes || true
         docker builder prune -af || true
-        
+
         # Limpar apenas imagens antigas do Container Registry (manter as 2 mais recentes)
         echo "🗑️ Limpando imagens antigas do Container Registry (>3 dias)..."
         gcloud container images list-tags gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME \
@@ -93,7 +93,7 @@ jobs:
               gcloud container images delete gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME@$digest --quiet --force-delete-tags || true
             fi
           done
-        
+
         echo "✅ Limpeza de cache concluída, mantendo serviço Cloud Run intacto..."
 
     - name: Build Docker image
@@ -104,17 +104,17 @@ jobs:
         echo "GCP_PROJECT_ID: $GCP_PROJECT_ID"
         echo "SERVICE_NAME: $SERVICE_NAME"
         echo "VERSION: $VERSION"
-        
+
         if [[ -z "$GCP_PROJECT_ID" ]]; then
           echo "❌ GCP_PROJECT_ID está vazio"
           exit 1
         fi
-        
+
         if [[ -z "$SERVICE_NAME" ]]; then
           echo "❌ SERVICE_NAME está vazio"
           exit 1
         fi
-        
+
         docker build --platform linux/amd64 --no-cache -f Dockerfile.qa -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
                      -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
                      -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
@@ -143,7 +143,21 @@ jobs:
         CLEAN_TAG=$(echo "v${VERSION}" | sed 's/-stage$//' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/-$//')
         echo "Tag original: v${VERSION}"
         echo "Tag limpa: ${CLEAN_TAG}"
-        
+
+        ENV_VARS="^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}"
+        ENV_VARS="${ENV_VARS}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com"
+        ENV_VARS="${ENV_VARS}##DATABASE_PROVIDER=render"
+        ENV_VARS="${ENV_VARS}##DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}"
+        ENV_VARS="${ENV_VARS}##JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}"
+        ENV_VARS="${ENV_VARS}##JWT_EXPIRES_IN=7d"
+        ENV_VARS="${ENV_VARS}##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
+        ENV_VARS="${ENV_VARS}##ZAPI_BASE_URL=${{ secrets.ZAPI_BASE_URL_STAGE }}"
+        ENV_VARS="${ENV_VARS}##ZAPI_INSTANCE_ID=${{ secrets.ZAPI_INSTANCE_ID_STAGE }}"
+        ENV_VARS="${ENV_VARS}##ZAPI_INSTANCE_TOKEN=${{ secrets.ZAPI_INSTANCE_TOKEN_STAGE }}"
+        ENV_VARS="${ENV_VARS}##ZAPI_ACCOUNT_TOKEN=${{ secrets.ZAPI_ACCOUNT_TOKEN_STAGE }}"
+        ENV_VARS="${ENV_VARS}##WHATSAPP_MIN_DELAY_MS=${{ secrets.WHATSAPP_MIN_DELAY_MS_STAGE }}"
+        ENV_VARS="${ENV_VARS}##FRONTEND_URL=${{ secrets.FRONTEND_URL_STAGE }}"
+
         gcloud run deploy "$SERVICE_NAME" \
           --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
           --region "$GCP_REGION" \
@@ -159,11 +173,11 @@ jobs:
           --cpu-boost \
           --no-traffic \
           --tag "${CLEAN_TAG}" \
-          --set-env-vars "^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com##DATABASE_PROVIDER=render##DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}##JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}##JWT_EXPIRES_IN=7d##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
-        
+          --set-env-vars "${ENV_VARS}"
+
         echo "📊 Aguardando deploy estabilizar..."
         sleep 10
-        
+
         echo "🔄 Direcionando 100% do tráfego para nova versão..."
         gcloud run services update-traffic "$SERVICE_NAME" \
           --to-latest \
