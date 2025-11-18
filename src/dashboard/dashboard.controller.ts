@@ -1,13 +1,18 @@
 import {
+  Body,
   Controller,
   Get,
   Post,
-  Body,
   Query,
-  UseGuards,
   Request,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { IgniterService } from '../rt/igniter.service';
 
@@ -30,7 +35,26 @@ export class DashboardController {
   constructor(private readonly igniterService: IgniterService) {}
 
   @Get('public-metrics')
-  @ApiOperation({ summary: 'Obter métricas públicas' })
+  @ApiOperation({
+    summary: 'Obter métricas públicas',
+    description:
+      'Retorna métricas públicas do sistema que podem ser exibidas sem autenticação. Use este endpoint para exibir estatísticas gerais do sistema em landing pages, páginas públicas ou para monitoramento externo.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Métricas públicas retornadas com sucesso. Retorna objeto com estatísticas gerais do sistema.',
+    schema: {
+      type: 'object',
+      example: {
+        totalTenants: 150,
+        totalQueues: 500,
+        totalTicketsToday: 5000,
+        activeQueues: 320,
+        timestamp: '2024-01-15T16:00:00.000Z',
+      },
+    },
+  })
   async getPublicMetrics() {
     return this.igniterService.getPublicMetrics();
   }
@@ -38,7 +62,28 @@ export class DashboardController {
   @Get('private-metrics')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Obter métricas privadas (autenticado)' })
+  @ApiOperation({
+    summary: 'Obter métricas privadas (autenticado)',
+    description:
+      'Retorna métricas privadas do usuário autenticado, incluindo dados do seu tenant e usuário. Use este endpoint para dashboards pessoais e visualizações de dados específicos do usuário autenticado.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Métricas privadas retornadas com sucesso. Retorna métricas específicas do usuário e tenant autenticado.',
+    schema: {
+      type: 'object',
+      example: {
+        userId: '123e4567-e89b-12d3-a456-426614174000',
+        tenantId: '123e4567-e89b-12d3-a456-426614174001',
+        metrics: {
+          totalQueues: 10,
+          activeTickets: 25,
+          completedToday: 150,
+        },
+      },
+    },
+  })
   async getPrivateMetrics(@Request() req: any) {
     const { userId, tenantId } = req.user;
     return this.igniterService.getDashboardMetrics(userId, tenantId);
@@ -47,7 +92,45 @@ export class DashboardController {
   @Get('admin-metrics')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Obter métricas administrativas' })
+  @ApiOperation({
+    summary: 'Obter métricas administrativas',
+    description:
+      'Retorna métricas administrativas do sistema. Apenas administradores (admin ou super_admin) podem acessar. Use este endpoint para dashboards administrativos e monitoramento do sistema como um todo.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Métricas administrativas retornadas com sucesso. Retorna estatísticas gerais do sistema incluindo tenants, receita, saúde do sistema e métricas de usuários.',
+    schema: {
+      type: 'object',
+      example: {
+        systemMetrics: {
+          totalTenants: 50,
+          totalRevenue: 100000,
+          systemHealth: 'excellent',
+          uptime: '99.9%',
+        },
+        userMetrics: {
+          totalUsers: 10000,
+          activeUsers: 5000,
+          newUsersToday: 100,
+          avgSessionTime: '45min',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Acesso negado - apenas administradores podem acessar.',
+    schema: {
+      type: 'object',
+      example: {
+        statusCode: 403,
+        message: 'Acesso negado',
+        error: 'Forbidden',
+      },
+    },
+  })
   async getAdminMetrics(@Request() req: any) {
     // Verificar se é admin
     if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
@@ -73,7 +156,29 @@ export class DashboardController {
   @Get('tenant-metrics')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Obter métricas do tenant' })
+  @ApiOperation({
+    summary: 'Obter métricas do tenant',
+    description:
+      'Retorna métricas específicas do tenant do usuário autenticado. Use este endpoint para dashboards gerenciais e relatórios específicos do tenant, incluindo estatísticas de usuários, tickets e satisfação do cliente.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Métricas do tenant retornadas com sucesso. Retorna estatísticas completas do tenant incluindo usuários, tickets e satisfação.',
+    schema: {
+      type: 'object',
+      example: {
+        tenantId: '123e4567-e89b-12d3-a456-426614174000',
+        metrics: {
+          totalUsers: 200,
+          activeTickets: 25,
+          completedTickets: 150,
+          avgResolutionTime: '20min',
+          customerSatisfaction: 4.5,
+        },
+      },
+    },
+  })
   async getTenantMetrics(@Request() req: any) {
     const { tenantId } = req.user;
 

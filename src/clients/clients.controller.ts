@@ -1,21 +1,21 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Query,
-  BadRequestException,
   UseGuards,
 } from '@nestjs/common';
 import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiQuery,
   ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
-import { ClientsService } from './clients.service';
 import { CurrentClient } from '../auth/decorators/current-client.decorator';
-import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
+import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
+import { ClientsService } from './clients.service';
 
 @ApiTags('clients')
 @Controller('clients')
@@ -29,12 +29,12 @@ export class ClientsController {
   @ApiOperation({
     summary: 'Buscar todas as senhas ativas de um cliente',
     description:
-      'Permite ao cliente ver todas suas senhas. Se logado com Google, busca automaticamente. Se não, usar telefone/email',
+      'Retorna todas as senhas (tickets) ativas de um cliente. Se o cliente estiver logado com Google, busca automaticamente usando os dados da sessão. Caso contrário, é necessário informar telefone ou email como query parameter. Use este endpoint para permitir que clientes visualizem todas suas senhas em diferentes filas/estabelecimentos.',
   })
   @ApiQuery({
     name: 'phone',
     required: false,
-    description: 'Telefone do cliente',
+    description: 'Telefone do cliente (formato: (11) 99999-1111)',
     example: '(11) 99999-1111',
   })
   @ApiQuery({
@@ -45,50 +45,52 @@ export class ClientsController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Lista de todas as senhas ativas do cliente',
+    description:
+      'Lista de todas as senhas ativas do cliente retornada com sucesso. Retorna informações do cliente e array de tickets ativos.',
     schema: {
       type: 'object',
-      properties: {
+      example: {
         client: {
-          type: 'object',
-          properties: {
-            identifier: { type: 'string' },
-            totalActiveTickets: { type: 'number' },
-          },
+          identifier: '+5511999998888',
+          totalActiveTickets: 2,
         },
-        tickets: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              myCallingToken: { type: 'string' },
-              status: { type: 'string' },
-              priority: { type: 'number' },
-              position: { type: 'number' },
-              estimatedTime: { type: 'number' },
-              createdAt: { type: 'string' },
-              calledAt: { type: 'string' },
-              queue: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  name: { type: 'string' },
-                  queueType: { type: 'string' },
-                  currentNumber: { type: 'number' },
-                  avgServiceTime: { type: 'number' },
-                  tenant: {
-                    type: 'object',
-                    properties: {
-                      name: { type: 'string' },
-                      slug: { type: 'string' },
-                    },
-                  },
-                },
+        tickets: [
+          {
+            id: '123e4567-e89b-12d3-a456-426614174020',
+            myCallingToken: 'A016',
+            status: 'WAITING',
+            priority: 1,
+            position: 5,
+            estimatedTime: 25,
+            createdAt: '2024-01-15T16:30:00.000Z',
+            calledAt: null,
+            queue: {
+              id: '123e4567-e89b-12d3-a456-426614174010',
+              name: 'Atendimento Geral',
+              queueType: 'GENERAL',
+              currentNumber: 'A011',
+              avgServiceTime: 300,
+              tenant: {
+                name: 'Empresa ABC',
+                slug: 'empresa-abc',
               },
             },
           },
-        },
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'É necessário informar telefone ou email, ou fazer login com Google.',
+    schema: {
+      type: 'object',
+      example: {
+        statusCode: 400,
+        message:
+          'É necessário informar telefone ou email, ou fazer login com Google',
+        error: 'Bad Request',
       },
     },
   })
@@ -121,53 +123,71 @@ export class ClientsController {
   @ApiOperation({
     summary: 'Dashboard consolidado do cliente',
     description:
-      'Visão completa das senhas do cliente com métricas em tempo real. Se logado com Google, busca automaticamente',
+      'Retorna dashboard consolidado com todas as senhas do cliente e métricas em tempo real. Inclui resumo de todas as filas, estatísticas consolidadas e métricas de velocidade de atendimento. Se logado com Google, busca automaticamente. Use este endpoint para criar um dashboard pessoal do cliente mostrando todas suas senhas em diferentes estabelecimentos.',
   })
   @ApiQuery({
     name: 'phone',
     required: false,
-    description: 'Telefone do cliente',
+    description: 'Telefone do cliente (formato: (11) 99999-1111)',
+    example: '(11) 99999-1111',
   })
   @ApiQuery({
     name: 'email',
     required: false,
     description: 'Email do cliente',
+    example: 'cliente@email.com',
   })
   @ApiResponse({
     status: 200,
-    description: 'Dashboard consolidado do cliente',
+    description:
+      'Dashboard consolidado do cliente retornado com sucesso. Retorna informações completas do cliente, resumo estatístico, tickets agrupados por estabelecimento e métricas em tempo real.',
     schema: {
       type: 'object',
-      properties: {
+      example: {
         client: {
-          type: 'object',
-          properties: {
-            identifier: { type: 'string' },
-            totalActiveTickets: { type: 'number' },
-          },
+          identifier: '+5511999998888',
+          totalActiveTickets: 2,
         },
         summary: {
-          type: 'object',
-          properties: {
-            totalWaiting: { type: 'number' },
-            totalCalled: { type: 'number' },
-            avgWaitTime: { type: 'number' },
-            nextCallEstimate: { type: 'number' },
-            establishmentsCount: { type: 'number' },
+          totalWaiting: 2,
+          totalCalled: 0,
+          avgWaitTime: 1200,
+          nextCallEstimate: 1800,
+          establishmentsCount: 2,
+        },
+        tickets: [
+          {
+            queueId: '123e4567-e89b-12d3-a456-426614174010',
+            queueName: 'Atendimento Geral',
+            tickets: [
+              {
+                id: '123e4567-e89b-12d3-a456-426614174020',
+                myCallingToken: 'A016',
+                position: 5,
+                estimatedTime: 25,
+              },
+            ],
           },
-        },
-        tickets: {
-          type: 'array',
-          description: 'Senhas agrupadas por estabelecimento',
-        },
+        ],
         realTimeMetrics: {
-          type: 'object',
-          properties: {
-            currentServiceSpeed: { type: 'number' },
-            timeSinceLastCall: { type: 'number' },
-            trendDirection: { type: 'string' },
-          },
+          currentServiceSpeed: 12,
+          timeSinceLastCall: 180,
+          trendDirection: 'stable',
         },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'É necessário informar telefone ou email, ou fazer login com Google.',
+    schema: {
+      type: 'object',
+      example: {
+        statusCode: 400,
+        message:
+          'É necessário informar telefone ou email, ou fazer login com Google',
+        error: 'Bad Request',
       },
     },
   })
@@ -269,20 +289,34 @@ export class ClientsController {
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Informações do cliente logado',
-    description: 'Retorna dados do cliente autenticado via Google',
+    description:
+      'Retorna dados completos do cliente autenticado via Google. Use este endpoint quando o cliente estiver logado para obter suas informações de perfil, incluindo ID, email, nome, foto e telefone.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Dados do cliente',
+    description:
+      'Dados do cliente retornados com sucesso. Retorna objeto com informações completas do perfil do cliente.',
     schema: {
       type: 'object',
-      properties: {
-        id: { type: 'string' },
-        email: { type: 'string' },
-        name: { type: 'string' },
-        picture: { type: 'string' },
-        phone: { type: 'string' },
-        userType: { type: 'string' },
+      example: {
+        id: '123e4567-e89b-12d3-a456-426614174003',
+        email: 'cliente@gmail.com',
+        name: 'João Silva',
+        picture: 'https://lh3.googleusercontent.com/a/default-user',
+        phone: '+5511999998888',
+        userType: 'client',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Apenas clientes autenticados podem acessar este endpoint.',
+    schema: {
+      type: 'object',
+      example: {
+        statusCode: 400,
+        message: 'Apenas clientes autenticados podem acessar',
+        error: 'Bad Request',
       },
     },
   })

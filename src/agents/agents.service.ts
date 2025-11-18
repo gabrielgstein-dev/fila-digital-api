@@ -1,29 +1,13 @@
 import {
-  Injectable,
-  NotFoundException,
   ConflictException,
   ForbiddenException,
+  Injectable,
+  NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
-
-export interface CreateAgentDto {
-  email: string;
-  name: string;
-  password?: string;
-  googleId?: string;
-  role: 'OPERADOR' | 'GERENTE' | 'GESTOR' | 'ADMINISTRADOR';
-  tenantId: string;
-  cpf: string;
-}
-
-export interface UpdateAgentDto {
-  email?: string;
-  name?: string;
-  password?: string;
-  role?: 'OPERADOR' | 'GERENTE' | 'GESTOR' | 'ADMINISTRADOR';
-  isActive?: boolean;
-}
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateAgentDto } from './dto/create-agent.dto';
+import { UpdateAgentDto } from './dto/update-agent.dto';
 
 @Injectable()
 export class AgentsService {

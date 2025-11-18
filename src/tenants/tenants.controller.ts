@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -36,16 +37,27 @@ export class TenantsController {
   @Public()
   @ApiOperation({
     summary: 'Criar novo tenant',
-    description: 'Cria uma nova empresa/estabelecimento no sistema',
+    description:
+      'Cria uma nova empresa/estabelecimento no sistema. Este endpoint é público e permite registrar uma nova organização no sistema. Um administrador inicial é criado automaticamente junto com o tenant. Use este endpoint quando uma nova empresa quiser se cadastrar no sistema.',
   })
+  @ApiBody({ type: CreateTenantDto })
   @ApiResponse({
     status: 201,
-    description: 'Tenant criado com sucesso',
+    description:
+      'Tenant criado com sucesso. Retorna os dados do tenant criado e informações do administrador inicial.',
     type: TenantResponseDto,
   })
   @ApiResponse({
     status: 409,
-    description: 'Slug ou email já existe',
+    description: 'Slug ou email já existe no sistema.',
+    schema: {
+      type: 'object',
+      example: {
+        statusCode: 409,
+        message: 'Slug ou email já existe',
+        error: 'Conflict',
+      },
+    },
   })
   async create(
     @Body() createTenantDto: CreateTenantDto,
