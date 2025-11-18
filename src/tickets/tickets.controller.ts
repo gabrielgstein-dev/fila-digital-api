@@ -1,15 +1,19 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   Param,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
+  ApiParam,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -27,47 +31,119 @@ export class TicketsController {
 
   @Post('queues/:queueId/tickets')
   @Public()
+  @ApiParam({
+    name: 'queueId',
+    description: 'ID da fila',
+    example: '123e4567-e89b-12d3-a456-426614174010',
+  })
   @ApiOperation({
     summary: 'Criar novo ticket (tirar senha)',
     description:
-      'Endpoint público que permite aos clientes tirarem uma senha na fila especificada',
+      'Endpoint público que permite aos clientes tirarem uma senha na fila especificada. Este é o endpoint principal usado pelos clientes para entrar na fila. Use este endpoint quando um cliente quiser pegar uma senha na fila. O ticket é criado com posição na fila e tempo estimado de atendimento calculado automaticamente.',
   })
+  @ApiBody({ type: CreateTicketDto })
   @ApiResponse({
     status: 201,
-    description: 'Ticket criado com sucesso',
+    description:
+      'Ticket criado com sucesso. Retorna os dados do ticket criado incluindo número da senha, posição na fila e tempo estimado.',
     schema: {
       type: 'object',
-      properties: {
-        id: { type: 'string', description: 'ID único do ticket' },
-        myCallingToken: {
-          type: 'string',
-          description: 'Número da senha (ex: A001)',
-        },
-        position: { type: 'number', description: 'Posição na fila' },
-        estimatedTime: {
-          type: 'number',
-          description: 'Tempo estimado em minutos',
-        },
-        queueName: { type: 'string', description: 'Nome da fila' },
+      example: {
+        id: '123e4567-e89b-12d3-a456-426614174020',
+        myCallingToken: 'A016',
+        position: 5,
+        estimatedTime: 25,
+        queueName: 'Atendimento Geral',
+        createdAt: '2024-01-15T16:30:00.000Z',
       },
     },
   })
   @ApiResponse({
     status: 400,
-    description: 'Fila cheia, inativa ou dados inválidos',
+    description: 'Fila cheia, inativa ou dados inválidos.',
+    schema: {
+      type: 'object',
+      example: {
+        statusCode: 400,
+        message: 'Fila cheia ou inativa',
+        error: 'Bad Request',
+      },
+    },
   })
   @ApiResponse({
     status: 404,
-    description: 'Fila não encontrada',
+    description: 'Fila não encontrada.',
+    schema: {
+      type: 'object',
+      example: {
+        statusCode: 404,
+        message: 'Fila não encontrada',
+        error: 'Not Found',
+      },
+    },
   })
   async create(
     @Param('queueId') queueId: string,
     @Body() createTicketDto: CreateTicketDto,
   ) {
-    // Este endpoint é público para permitir que clientes criem tickets
-    // sem necessidade de autenticação
     const userId = null;
     return this.ticketsService.create(queueId, createTicketDto, userId);
+  }
+
+  @Get('queues/:queueId/join-telegram')
+  @Public()
+  @ApiOperation({
+    summary: 'Entrar na fila via Telegram (QR Code)',
+    description:
+      'Endpoint público que cria ticket automaticamente quando acessado via QR Code do Telegram. Requer chatId como query parameter.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Ticket criado com sucesso - redireciona para Telegram',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Fila cheia, inativa ou chatId não fornecido',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Fila não encontrada',
+  })
+  async joinViaTelegram(
+    @Param('queueId') queueId: string,
+    @Query('chatId') chatId?: string,
+  ) {
+    if (!chatId) {
+      throw new BadRequestException(
+        'chatId é obrigatório. Use o link do Telegram para acessar este endpoint.',
+      );
+    }
+
+    const createTicketDto: CreateTicketDto = {
+      telegramChatId: chatId,
+    };
+
+    const ticket = await this.ticketsService.create(
+      queueId,
+      createTicketDto,
+      undefined,
+    );
+
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'seu_bot';
+    const telegramUrl = `https://t.me/${botUsername}?start=ticket_${ticket.id}`;
+
+    return {
+      success: true,
+      message: 'Ticket criado com sucesso!',
+      ticket: {
+        id: ticket.id,
+        myCallingToken: ticket.myCallingToken,
+        position: (ticket as { position?: number }).position,
+        estimatedTime: ticket.estimatedTime,
+      },
+      telegramUrl,
+      redirect: telegramUrl,
+    };
   }
 
   @Get('tickets/:id')
@@ -312,30 +388,58 @@ export class TicketsController {
   @Put('tickets/:id/current-calling-token')
   @UseGuards(TenantAuthGuard)
   @ApiBearerAuth()
+  @ApiParam({
+    name: 'id',
+    description: 'ID do ticket',
+    example: '123e4567-e89b-12d3-a456-426614174020',
+  })
   @ApiOperation({
     summary: 'Atualizar token de chamada atual',
     description:
-      'Permite que agentes atualizem o número da senha sendo chamada no momento',
+      'Permite que agentes atualizem manualmente o número da senha sendo chamada no momento. Use este endpoint quando um atendente precisar atualizar manualmente qual senha está sendo chamada, por exemplo, quando usar um sistema de chamada externo ou quando precisar corrigir o número atual na fila.',
   })
+  @ApiBody({ type: UpdateCurrentCallingTokenDto })
   @ApiResponse({
     status: 200,
-    description: 'Token de chamada atualizado com sucesso',
+    description:
+      'Token de chamada atualizado com sucesso. Retorna os dados do ticket atualizado.',
     schema: {
       type: 'object',
-      properties: {
-        ticket: { type: 'object', description: 'Dados do ticket atualizado' },
-        currentCallingToken: {
-          type: 'string',
-          description: 'Novo token de chamada',
+      example: {
+        ticket: {
+          id: '123e4567-e89b-12d3-a456-426614174020',
+          myCallingToken: 'A016',
+          status: 'CALLED',
+          currentCallingToken: 'A016',
         },
+        currentCallingToken: 'A016',
       },
     },
   })
   @ApiResponse({
     status: 403,
-    description: 'Acesso negado: usuário não pertence ao tenant do ticket',
+    description: 'Acesso negado: usuário não pertence ao tenant do ticket.',
+    schema: {
+      type: 'object',
+      example: {
+        statusCode: 403,
+        message: 'Acesso negado',
+        error: 'Forbidden',
+      },
+    },
   })
-  @ApiResponse({ status: 404, description: 'Ticket não encontrado' })
+  @ApiResponse({
+    status: 404,
+    description: 'Ticket não encontrado.',
+    schema: {
+      type: 'object',
+      example: {
+        statusCode: 404,
+        message: 'Ticket não encontrado',
+        error: 'Not Found',
+      },
+    },
+  })
   async updateCurrentCallingToken(
     @Param('id') id: string,
     @Body() updateCurrentCallingTokenDto: UpdateCurrentCallingTokenDto,
