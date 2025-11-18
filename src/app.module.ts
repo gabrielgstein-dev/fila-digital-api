@@ -1,25 +1,27 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AgentsModule } from './agents/agents.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { PrismaModule } from './prisma/prisma.module';
-import { TenantsModule } from './tenants/tenants.module';
-import { QueuesModule } from './queues/queues.module';
-import { TicketsModule } from './tickets/tickets.module';
 import { AuthModule } from './auth/auth.module';
-import { EventsModule } from './events/events.module';
 import { ClientsModule } from './clients/clients.module';
-import { MessagingModule } from './messaging/messaging.module';
-import { AgentsModule } from './agents/agents.module';
-import { CorporateUsersModule } from './corporate-users/corporate-users.module';
-import { DashboardModule } from './dashboard/dashboard.module';
-import { SmsModule } from './sms/sms.module';
-import { IgniterModule } from './rt/igniter.module';
 import { SanitizeInterceptor } from './common/interceptors/sanitize.interceptor';
 import { TenantFilterInterceptor } from './common/interceptors/tenant-filter.interceptor';
+import { CorporateUsersModule } from './corporate-users/corporate-users.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { EventsModule } from './events/events.module';
+import { MessagingModule } from './messaging/messaging.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { QueuesModule } from './queues/queues.module';
+import { IgniterModule } from './rt/igniter.module';
+import { SmsModule } from './sms/sms.module';
+import { TelegramModule } from './telegram/telegram.module';
+import { TenantsModule } from './tenants/tenants.module';
+import { TicketsModule } from './tickets/tickets.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -56,6 +58,8 @@ import { TenantFilterInterceptor } from './common/interceptors/tenant-filter.int
     CorporateUsersModule,
     DashboardModule,
     SmsModule,
+    TelegramModule,
+    WhatsAppModule,
     IgniterModule,
   ],
   controllers: [AppController],
