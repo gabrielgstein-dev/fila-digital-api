@@ -85,10 +85,10 @@ export class SmsService {
 
   async sendQueueNotification(
     phoneNumber: string,
-    queueName: string,
-    position: number,
+    tenantName: string,
+    ticketToken: string,
   ): Promise<SmsResponse> {
-    const message = `Olá! Você está na posição ${position} da fila "${queueName}". Aguarde ser chamado.`;
+    const message = `Olá! Você entrou na fila da empresa ${tenantName} e sua senha é ${ticketToken}. Aguarde ser chamado.`;
 
     return this.sendSms({
       to: phoneNumber,

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TicketStatus } from '@prisma/client';
+import { Ticket, TicketStatus } from '@prisma/client';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -103,7 +103,7 @@ export class TicketCleanupService {
 
       // DESABILITADO: Expiração automática removida
       // Não buscar tickets abandonados automaticamente
-      const abandonedTickets: never[] = [];
+      const abandonedTickets: Ticket[] = [];
 
       let cleanedCount = 0;
 
