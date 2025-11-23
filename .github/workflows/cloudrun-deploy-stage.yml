@@ -201,7 +201,6 @@ jobs:
           --timeout 3600 \
           --execution-environment gen2 \
           --cpu-boost \
-          --startup-cpu-boost \
           --no-traffic \
           --tag "${CLEAN_TAG}" \
           --set-env-vars "${ENV_VARS}" \
