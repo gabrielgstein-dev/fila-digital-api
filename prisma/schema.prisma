@@ -46,6 +46,7 @@ model Ticket {
   id             String       @id @default(cuid())
   priority       Int          @default(1)
   status         TicketStatus @default(WAITING)
+  guestToken     String       @unique @default(uuid())
   clientName     String?
   clientCpf       String?
   clientPhone    String?

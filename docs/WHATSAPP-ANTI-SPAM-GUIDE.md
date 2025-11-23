@@ -6,7 +6,6 @@ O WhatsApp possui políticas rigorosas contra spam e pode bloquear ou restringir
 - Enviam muitas mensagens em curto período
 - Enviam mensagens para usuários que não solicitaram
 - Enviam mensagens genéricas ou não personalizadas
-- Usam APIs não oficiais (como Z-API)
 
 ## ✅ Solução Implementada
 
@@ -81,9 +80,9 @@ O sistema gera logs detalhados sobre o processamento da fila:
 
 ## ⚠️ Se A Conta For Bloqueada
 
-### 1. Contatar Suporte Z-API
+### 1. Contatar Suporte do Provedor Oficial
 
-Entre em contato com o suporte da Z-API explicando:
+Entre em contato com o suporte explicando:
 - Uso legítimo do serviço
 - Sistema de fila digital
 - Mensagens são enviadas apenas para usuários que forneceram telefone voluntariamente
@@ -103,28 +102,10 @@ Enquanto a conta está bloqueada, o sistema pode usar:
 
 - **SMS** (Twilio): Já implementado
 - **Telegram**: Já implementado
-- **Link WhatsApp**: Gerado automaticamente quando WhatsApp não está configurado
 
 ## 🔄 Alternativas e Fallbacks
 
-### 1. Link WhatsApp (Gratuito)
-
-O sistema gera automaticamente links WhatsApp quando a API não está configurada:
-
-```
-https://wa.me/5511999999999?text=Olá!%20Você%20entrou%20na%20fila...
-```
-
-**Vantagens**:
-- ✅ Gratuito
-- ✅ Não requer API
-- ✅ Funciona sem aprovação prévia
-
-**Desvantagens**:
-- ⚠️ Requer que usuário clique no link
-- ⚠️ Não é 100% automático
-
-### 2. SMS (Twilio)
+### 1. SMS (Twilio)
 
 **Vantagens**:
 - ✅ Automático
@@ -135,7 +116,7 @@ https://wa.me/5511999999999?text=Olá!%20Você%20entrou%20na%20fila...
 - ⚠️ Custo por mensagem
 - ⚠️ Pode ter limites de envio
 
-### 3. Telegram
+### 2. Telegram
 
 **Vantagens**:
 - ✅ Automático

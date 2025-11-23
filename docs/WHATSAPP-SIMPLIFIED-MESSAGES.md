@@ -102,7 +102,7 @@ Atualização da sua senha A123 na fila Atendimento Geral da empresa Acme Corp.
 ### 3. **Melhor Performance**
 - ✅ Envio mais rápido
 - ✅ Menor chance de falha
-- ✅ Menos processamento do Z-API
+- ✅ Menos processamento na infraestrutura de envio
 
 ### 4. **Melhor UX**
 - ✅ Mensagem mais limpa e objetiva
@@ -144,7 +144,7 @@ Além da simplificação das mensagens, o sistema conta com:
 3. ✅ **Validação de número** antes de enviar
 
 ### Médio Prazo (1-2 meses):
-1. 🏢 **WhatsApp Business API Oficial** (via Z-API)
+1. 🏢 **WhatsApp Business API Oficial** (Cloud API da Meta)
 2. 📋 **Templates aprovados** pela Meta
 3. 📈 **Métricas de entrega** e leitura
 
@@ -189,15 +189,12 @@ curl -X POST http://localhost:3001/api/v1/queues/{queueId}/tickets \
 Se precisar de ajuda com a configuração ou tiver problemas:
 
 1. **Verificar status:** `GET /api/v1/whatsapp/status`
-2. **Logs do servidor:** Procurar por `[WHATSAPP]` ou `[Z-API]`
-3. **Documentação Z-API:** https://developer.z-api.io/
+2. **Logs do servidor:** Procurar por `[WHATSAPP]`
 
 ## 🔗 Links Relacionados
 
 - [Documentação Completa WhatsApp](./WHATSAPP-FREE-TESTING.md)
 - [Sistema Anti-Spam](./WHATSAPP-ANTI-SPAM-GUIDE.md)
-- [Configuração Z-API](./Z-API-CONFIGURATION-GUIDE.md)
-- [WhatsApp Business API](./WHATSAPP-ALTERNATIVES-BRAZIL.md)
 
 ---
 
