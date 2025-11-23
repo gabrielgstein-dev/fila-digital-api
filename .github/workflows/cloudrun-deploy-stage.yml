@@ -160,7 +160,6 @@ jobs:
         fi
 
         # Criar tag válida para Cloud Run (apenas letras minúsculas, números e hífens)
-        # Remove sufixos problemáticos e substitui caracteres inválidos
         CLEAN_TAG=$(echo "v${VERSION}" | sed 's/-stage$//' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/-$//')
         echo "Tag original: v${VERSION}"
         echo "Tag limpa: ${CLEAN_TAG}"
@@ -176,6 +175,7 @@ jobs:
         echo "🚀 Iniciando deploy do Cloud Run..."
         echo "Imagem: gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA"
 
+        # NOTA: Usando aspas duplas em torno das env vars e escape de vírgulas (\,) no CORS_ORIGIN
         gcloud run deploy "$SERVICE_NAME" \
           --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
           --region "$GCP_REGION" \
@@ -192,17 +192,17 @@ jobs:
           --cpu-boost \
           --no-traffic \
           --tag "${CLEAN_TAG}" \
-          --set-env-vars NODE_ENV=${{ secrets.NODE_ENV_STAGE }} \
-          --set-env-vars CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com \
-          --set-env-vars DATABASE_PROVIDER=render \
-          --set-env-vars DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }} \
-          --set-env-vars JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }} \
-          --set-env-vars JWT_EXPIRES_IN=7d \
-          --set-env-vars META_API_VERSION=${{ secrets.META_API_VERSION_STAGE }} \
-          --set-env-vars META_PHONE_NUMBER_ID=${{ secrets.META_PHONE_NUMBER_ID_STAGE }} \
-          --set-env-vars META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN_STAGE }} \
-          --set-env-vars WHATSAPP_MIN_DELAY_MS=${{ secrets.WHATSAPP_MIN_DELAY_MS_STAGE }} \
-          --set-env-vars FRONTEND_URL=${{ secrets.FRONTEND_URL_STAGE }} \
+          --set-env-vars "NODE_ENV=${{ secrets.NODE_ENV_STAGE }}" \
+          --set-env-vars "CORS_ORIGIN=https://fila-digital.com\,https://www.fila-digital.com\,https://app.fila-digital.com" \
+          --set-env-vars "DATABASE_PROVIDER=render" \
+          --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}" \
+          --set-env-vars "JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}" \
+          --set-env-vars "JWT_EXPIRES_IN=7d" \
+          --set-env-vars "META_API_VERSION=${{ secrets.META_API_VERSION_STAGE }}" \
+          --set-env-vars "META_PHONE_NUMBER_ID=${{ secrets.META_PHONE_NUMBER_ID_STAGE }}" \
+          --set-env-vars "META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN_STAGE }}" \
+          --set-env-vars "WHATSAPP_MIN_DELAY_MS=${{ secrets.WHATSAPP_MIN_DELAY_MS_STAGE }}" \
+          --set-env-vars "FRONTEND_URL=${{ secrets.FRONTEND_URL_STAGE }}" \
           --project "$GCP_PROJECT_ID"
 
         echo "📊 Aguardando deploy estabilizar..."
