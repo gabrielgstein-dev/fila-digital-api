@@ -3,6 +3,8 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
@@ -18,6 +20,8 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 @Injectable()
 export class TicketsService {
+  private readonly logger = new Logger(TicketsService.name);
+
   constructor(
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
@@ -34,217 +38,229 @@ export class TicketsService {
     createTicketDto: CreateTicketDto,
     userId?: string,
   ) {
-    const queue = await this.prisma.queue.findUnique({
-      where: { id: queueId },
-      select: {
-        id: true,
-        name: true,
-        isActive: true,
-        capacity: true,
-        avgServiceTime: true,
-        queueType: true,
-        tenant: {
-          select: {
-            id: true,
-            name: true,
-            isActive: true,
+    try {
+      this.logger.log(`Criando ticket para fila: ${queueId}`);
+      this.logger.debug(
+        `Dados do ticket: ${JSON.stringify({
+          clientName: createTicketDto.clientName,
+          clientPhone: createTicketDto.clientPhone,
+          priority: createTicketDto.priority,
+        })}`,
+      );
+
+      const queue = await this.prisma.queue.findUnique({
+        where: { id: queueId },
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+          capacity: true,
+          avgServiceTime: true,
+          queueType: true,
+          tenant: {
+            select: {
+              id: true,
+              name: true,
+              isActive: true,
+            },
           },
         },
-        tickets: {
-          select: {
-            id: true,
-            status: true,
-          },
+      });
+
+      if (!queue) {
+        throw new NotFoundException('Fila não encontrada');
+      }
+
+      if (!queue.tenant) {
+        throw new BadRequestException('Tenant não encontrado para esta fila');
+      }
+
+      if (queue.tenant.isActive !== true) {
+        throw new BadRequestException('Tenant não está ativo');
+      }
+
+      if (queue.isActive !== true) {
+        throw new BadRequestException('Fila não está ativa');
+      }
+
+      const waitingTicketsCount = await this.prisma.ticket.count({
+        where: {
+          queueId,
+          status: TicketStatus.WAITING,
         },
-      },
-    });
+      });
 
-    if (!queue) {
-      throw new NotFoundException('Fila não encontrada');
-    }
+      if (waitingTicketsCount >= queue.capacity) {
+        throw new BadRequestException('Fila está cheia');
+      }
 
-    if (!queue.tenant) {
-      throw new BadRequestException('Tenant não encontrado para esta fila');
-    }
+      const queuePrefix = this.getQueuePrefix(queue);
 
-    if (queue.tenant.isActive !== true) {
-      throw new BadRequestException('Tenant não está ativo');
-    }
+      const lastTicket = await this.prisma.ticket.findFirst({
+        where: { queueId },
+        orderBy: { myCallingToken: 'desc' },
+      });
 
-    if (queue.isActive !== true) {
-      throw new BadRequestException('Fila não está ativa');
-    }
+      const lastNumber =
+        this.extractNumberFromToken(lastTicket?.myCallingToken) || 0;
+      const nextNumber = lastNumber + 1;
+      const nextToken = `${queuePrefix}${nextNumber}`;
 
-    const waitingTickets = queue.tickets.filter(
-      (ticket) => ticket.status === TicketStatus.WAITING,
-    );
+      const estimatedTime = this.calculateEstimatedTime(
+        waitingTicketsCount,
+        queue.avgServiceTime,
+      );
 
-    if (waitingTickets.length >= queue.capacity) {
-      throw new BadRequestException('Fila está cheia');
-    }
-
-    const queuePrefix = this.getQueuePrefix(queue);
-
-    const lastTicket = await this.prisma.ticket.findFirst({
-      where: { queueId },
-      orderBy: { myCallingToken: 'desc' },
-    });
-
-    const lastNumber =
-      this.extractNumberFromToken(lastTicket?.myCallingToken) || 0;
-    const nextNumber = lastNumber + 1;
-    const nextToken = `${queuePrefix}${nextNumber}`;
-
-    const estimatedTime = this.calculateEstimatedTime(
-      waitingTickets.length,
-      queue.avgServiceTime,
-    );
-
-    const ticketData = {
-      clientName: createTicketDto.clientName ?? null,
-      clientCpf: createTicketDto.clientCpf ?? null,
-      clientPhone: createTicketDto.clientPhone ?? null,
-      clientEmail: createTicketDto.clientEmail ?? null,
-      telegramChatId: createTicketDto.telegramChatId ?? null,
-      priority: createTicketDto.priority ?? 1,
-      queueId,
-      myCallingToken: nextToken,
-      estimatedTime,
-      userId: userId || null,
-      status: TicketStatus.WAITING,
-    };
-
-    const ticket = await this.prisma.ticket.create({
-      data: ticketData,
-      include: {
-        queue: {
-          include: {
-            tenant: true,
-          },
-        },
-        user: true,
-      },
-    });
-
-    this.eventsService.emitQueueStatusUpdate(queueId, {
-      totalWaiting: waitingTickets.length + 1,
-      lastTicketCreated: ticket.myCallingToken,
-      estimatedWaitTime: estimatedTime,
-    });
-
-    this.eventsService.emitTicketStatusChanged(
-      ticket.id,
-      null,
-      TicketStatus.WAITING,
-      {
-        ticketId: ticket.id,
-        myCallingToken: ticket.myCallingToken,
-        position: waitingTickets.length + 1,
+      const ticketData = {
+        clientName: createTicketDto.clientName ?? null,
+        clientCpf: createTicketDto.clientCpf ?? null,
+        clientPhone: createTicketDto.clientPhone ?? null,
+        clientEmail: createTicketDto.clientEmail ?? null,
+        telegramChatId: createTicketDto.telegramChatId ?? null,
+        priority: createTicketDto.priority ?? 1,
+        queueId,
+        myCallingToken: nextToken,
         estimatedTime,
-      },
-    );
+        userId: userId || null,
+        status: TicketStatus.WAITING,
+      };
 
-    // 📱 ENVIAR NOTIFICAÇÃO TELEGRAM DE CONFIRMAÇÃO DE ENTRADA NA FILA
-    const telegramChatId = (ticket as { telegramChatId?: string })
-      .telegramChatId;
-    if (telegramChatId && this.telegramService.isConfigured()) {
+      this.logger.debug(`Criando ticket no banco de dados: ${nextToken}`);
+
+      const ticket = await this.prisma.ticket.create({
+        data: ticketData,
+        include: {
+          queue: {
+            include: {
+              tenant: true,
+            },
+          },
+          user: true,
+        },
+      });
+
+      this.logger.log(`Ticket criado com sucesso: ${ticket.id} - ${nextToken}`);
+
+      const position = waitingTicketsCount + 1;
+
       try {
-        const estimatedMinutes = Math.ceil(
-          ((waitingTickets.length + 1) * queue.avgServiceTime) / 60,
+        this.eventsService.emitQueueStatusUpdate(queueId, {
+          totalWaiting: position,
+          lastTicketCreated: ticket.myCallingToken,
+          estimatedWaitTime: estimatedTime,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Erro ao emitir atualização de status da fila: ${error instanceof Error ? error.message : String(error)}`,
+          error instanceof Error ? error.stack : undefined,
         );
-        await this.telegramService.sendQueueStatusUpdate(
-          telegramChatId,
-          ticket.queue.tenant.name,
-          ticket.myCallingToken,
-          waitingTickets.length + 1,
-          estimatedMinutes,
+      }
+
+      try {
+        this.eventsService.emitTicketStatusChanged(
+          ticket.id,
+          null,
+          TicketStatus.WAITING,
+          {
+            ticketId: ticket.id,
+            myCallingToken: ticket.myCallingToken,
+            position,
+            estimatedTime,
+          },
         );
       } catch (error) {
-        console.error('Erro ao enviar notificação Telegram:', error);
-      }
-    }
-
-    // 📱 ENVIAR NOTIFICAÇÃO WHATSAPP (com fila para evitar spam)
-    console.log(
-      '[WHATSAPP DEBUG] Verificando envio WhatsApp para ticket',
-      ticket.myCallingToken,
-    );
-    console.log('[WHATSAPP DEBUG] ticket.clientPhone:', ticket.clientPhone);
-    console.log(
-      '[WHATSAPP DEBUG] whatsappService.isConfigured():',
-      this.whatsappService.isConfigured(),
-    );
-
-    if (ticket.clientPhone && this.whatsappService.isConfigured()) {
-      console.log(
-        '📱 [WHATSAPP] Enviando notificação WhatsApp de entrada na fila',
-      );
-      console.log('📱 [WHATSAPP] Telefone:', ticket.clientPhone);
-      console.log('📱 [WHATSAPP] Senha:', ticket.myCallingToken);
-      console.log('📱 [WHATSAPP] Posição:', waitingTickets.length + 1);
-
-      try {
-        const position = waitingTickets.length + 1;
-        const estimatedMinutes = Math.ceil(
-          (position * queue.avgServiceTime) / 60,
+        this.logger.error(
+          `Erro ao emitir mudança de status do ticket: ${error instanceof Error ? error.message : String(error)}`,
+          error instanceof Error ? error.stack : undefined,
         );
-        const baseUrl =
-          this.configService.get<string>('FRONTEND_URL') ||
-          'http://localhost:3000';
+      }
 
-        console.log('📱 [WHATSAPP] Tempo estimado:', estimatedMinutes, 'min');
-        console.log('📱 [WHATSAPP] Adicionando mensagem à fila de envio...');
-
-        this.whatsappQueueService
-          .enqueue(
-            ticket.clientPhone,
+      const telegramChatId = (ticket as { telegramChatId?: string })
+        .telegramChatId;
+      if (telegramChatId && this.telegramService.isConfigured()) {
+        try {
+          const estimatedMinutes = Math.ceil(
+            (position * queue.avgServiceTime) / 60,
+          );
+          await this.telegramService.sendQueueStatusUpdate(
+            telegramChatId,
             ticket.queue.tenant.name,
             ticket.myCallingToken,
             position,
             estimatedMinutes,
-            ticket.id,
-            baseUrl,
-            ticket.clientName || undefined,
-            queue.name,
-          )
-          .then((result) => {
-            if (result.success) {
-              console.log(
-                `✅ [WHATSAPP] Notificação WhatsApp enviada com sucesso para ${ticket.clientPhone} - Senha: ${ticket.myCallingToken}`,
-              );
-            } else {
-              console.error(
-                `❌ [WHATSAPP] Erro ao enviar WhatsApp para ${ticket.clientPhone}:`,
-                result.error,
-              );
-            }
-          })
-          .catch((error) => {
-            console.error(
-              `❌ [WHATSAPP] Erro ao enviar WhatsApp para ${ticket.clientPhone}:`,
-              error,
-            );
-          });
-      } catch (error) {
-        console.error(
-          `❌ [WHATSAPP] Erro ao adicionar WhatsApp à fila para ${ticket.clientPhone}:`,
-          error,
-        );
+          );
+        } catch (error) {
+          this.logger.error(
+            `Erro ao enviar notificação Telegram: ${error instanceof Error ? error.message : String(error)}`,
+            error instanceof Error ? error.stack : undefined,
+          );
+        }
       }
-    } else {
-      if (!ticket.clientPhone) {
-        console.log(
-          '⚠️ [WHATSAPP] Telefone não informado, WhatsApp não será enviado',
-        );
-      }
-      if (!this.whatsappService.isConfigured()) {
-        console.log(
-          '⚠️ [WHATSAPP] WhatsApp não está configurado, mensagem não será enviada',
-        );
-      }
-    }
 
-    return ticket;
+      if (ticket.clientPhone && this.whatsappService.isConfigured()) {
+        try {
+          const estimatedMinutes = Math.ceil(
+            (position * queue.avgServiceTime) / 60,
+          );
+          const baseUrl =
+            this.configService.get<string>('FRONTEND_URL') ||
+            'http://localhost:3000';
+
+          this.whatsappQueueService
+            .enqueue(
+              ticket.clientPhone,
+              ticket.queue.tenant.name,
+              ticket.myCallingToken,
+              position,
+              estimatedMinutes,
+              ticket.id,
+              baseUrl,
+              ticket.clientName || undefined,
+              queue.name,
+            )
+            .then((result) => {
+              if (result.success) {
+                this.logger.log(
+                  `Notificação WhatsApp enviada com sucesso para ${ticket.clientPhone} - Senha: ${ticket.myCallingToken}`,
+                );
+              } else {
+                this.logger.error(
+                  `Erro ao enviar WhatsApp para ${ticket.clientPhone}: ${result.error}`,
+                );
+              }
+            })
+            .catch((error) => {
+              this.logger.error(
+                `Erro ao enviar WhatsApp para ${ticket.clientPhone}: ${error instanceof Error ? error.message : String(error)}`,
+                error instanceof Error ? error.stack : undefined,
+              );
+            });
+        } catch (error) {
+          this.logger.error(
+            `Erro ao adicionar WhatsApp à fila para ${ticket.clientPhone}: ${error instanceof Error ? error.message : String(error)}`,
+            error instanceof Error ? error.stack : undefined,
+          );
+        }
+      }
+
+      return ticket;
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+
+      this.logger.error(
+        `Erro ao criar ticket na fila ${queueId}: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+
+      throw new InternalServerErrorException(
+        'Erro ao criar ticket. Por favor, tente novamente.',
+      );
+    }
   }
 
   async findOne(id: string) {
