@@ -76,7 +76,7 @@ jobs:
         docker system prune -af --volumes || true
         docker builder prune -af || true
 
-        # Limpar imagens antigas (mantendo as 2 mais recentes)
+        # Limpar imagens antigas
         gcloud container images list-tags gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME \
           --limit=999 --sort-by=TIMESTAMP \
           --format="get(digest)" --filter="timestamp.datetime < -P3D" | \
@@ -119,12 +119,11 @@ jobs:
 
         # ---------------------------------------------------------------------
         # TÉCNICA DO DELIMITADOR PERSONALIZADO (^;;^)
-        # Isso diz ao gcloud para separar as variáveis por ';;' em vez de ','
-        # Assim, podemos ter vírgulas dentro do CORS_ORIGIN sem quebrar o comando.
+        # Mantendo esta técnica pois ela resolveu o erro anterior de "Bad syntax"
         # ---------------------------------------------------------------------
 
         ENV_VARS="^;;^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}"
-        ENV_VARS+=";;CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com"
+        ENV_VARS+=";;CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com,https://app-stage.agilizafilas.com"
         ENV_VARS+=";;DATABASE_PROVIDER=render"
         ENV_VARS+=";;DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}"
         ENV_VARS+=";;JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}"
@@ -137,6 +136,8 @@ jobs:
 
         echo "🚀 Iniciando deploy..."
 
+        # REMOVIDO: --startup-timeout 300 (Causava erro de unrecognized arguments)
+
         gcloud run deploy "$SERVICE_NAME" \
           --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
           --region "$GCP_REGION" \
@@ -148,7 +149,6 @@ jobs:
           --min-instances 0 \
           --max-instances 10 \
           --timeout 3600 \
-          --startup-timeout 300 \
           --execution-environment gen2 \
           --cpu-boost \
           --no-traffic \
