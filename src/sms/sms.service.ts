@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Twilio } from 'twilio';
 
 export interface SendSmsOptions {
   to: string;
@@ -17,62 +16,18 @@ export interface SmsResponse {
 @Injectable()
 export class SmsService {
   private readonly logger = new Logger(SmsService.name);
-  private readonly twilioClient: Twilio;
-  private readonly defaultFromNumber: string;
+  private readonly enabled: boolean;
 
   constructor(private readonly configService: ConfigService) {
-    const accountSid = this.configService.get<string>('TWILIO_SID');
-    const authToken = this.configService.get<string>('TWILIO_TOKEN');
-
-    if (!accountSid || !authToken) {
-      this.logger.warn(
-        'Twilio credentials not found. SMS service will be disabled.',
-      );
-      return;
-    }
-
-    this.twilioClient = new Twilio(accountSid, authToken);
-    this.defaultFromNumber =
-      this.configService.get<string>('TWILIO_FROM_NUMBER') || '';
-
-    this.logger.log('Twilio SMS service initialized successfully');
+    this.enabled = false;
+    this.logger.log('SMS service disabled. Using WhatsApp only.');
   }
 
   async sendSms(options: SendSmsOptions): Promise<SmsResponse> {
     try {
-      if (!this.twilioClient) {
-        this.logger.error(
-          'Twilio client not initialized. Check your credentials.',
-        );
-        return {
-          success: false,
-          error: 'SMS service not available',
-        };
-      }
-
-      const fromNumber = options.from || this.defaultFromNumber;
-
-      if (!fromNumber) {
-        this.logger.error('No from number specified and no default configured');
-        return {
-          success: false,
-          error: 'No sender number configured',
-        };
-      }
-
-      this.logger.debug(`Sending SMS to ${options.to}: ${options.message}`);
-
-      const message = await this.twilioClient.messages.create({
-        body: options.message,
-        from: fromNumber,
-        to: options.to,
-      });
-
-      this.logger.log(`SMS sent successfully. Message SID: ${message.sid}`);
-
       return {
-        success: true,
-        messageSid: message.sid,
+        success: false,
+        error: 'SMS service not available',
       };
     } catch (error) {
       this.logger.error(`Failed to send SMS: ${error.message}`, error.stack);
@@ -123,6 +78,6 @@ export class SmsService {
   }
 
   isConfigured(): boolean {
-    return !!this.twilioClient;
+    return this.enabled;
   }
 }

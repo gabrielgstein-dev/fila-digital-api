@@ -164,7 +164,7 @@ export class TicketsService {
       }
     }
 
-    // 📱 ENVIAR NOTIFICAÇÃO WHATSAPP VIA Z-API (com fila para evitar spam)
+    // 📱 ENVIAR NOTIFICAÇÃO WHATSAPP (com fila para evitar spam)
     console.log(
       '[WHATSAPP DEBUG] Verificando envio WhatsApp para ticket',
       ticket.myCallingToken,
@@ -239,7 +239,7 @@ export class TicketsService {
       }
       if (!this.whatsappService.isConfigured()) {
         console.log(
-          '⚠️ [WHATSAPP] WhatsApp não está configurado (Z-API não configurado), mensagem não será enviada',
+          '⚠️ [WHATSAPP] WhatsApp não está configurado, mensagem não será enviada',
         );
       }
     }
@@ -428,6 +428,43 @@ export class TicketsService {
       isWaiting: ticket.status === TicketStatus.WAITING,
       isCompleted: ticket.status === TicketStatus.COMPLETED,
       lastUpdated: new Date(),
+    };
+  }
+
+  async getPublicTicketStatusByGuestToken(guestToken: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { guestToken: guestToken },
+      include: {
+        queue: {
+          select: {
+            id: true,
+            name: true,
+            avgServiceTime: true,
+          },
+        },
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket não encontrado');
+    }
+
+    if (!ticket.queue) {
+      throw new NotFoundException('Fila não encontrada para este ticket');
+    }
+
+    const position = await this.getTicketPosition(ticket.queueId, ticket.id);
+    const estimatedWaitTime = this.calculateEstimatedTime(
+      position - 1,
+      ticket.queue.avgServiceTime,
+    );
+
+    return {
+      status: ticket.status,
+      queueName: ticket.queue.name,
+      myCallingToken: ticket.myCallingToken,
+      position: position > 0 ? position : null,
+      estimatedWaitTime,
     };
   }
 

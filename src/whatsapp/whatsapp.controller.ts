@@ -20,7 +20,7 @@ export class WhatsAppController {
   @ApiOperation({
     summary: 'Verificar status da configuração WhatsApp',
     description:
-      'Endpoint público para verificar se o Z-API está configurado corretamente. Retorna informações sobre o status da configuração.',
+      'Endpoint público para verificar se o WhatsApp está configurado corretamente. Retorna informações sobre o status da configuração.',
   })
   @ApiResponse({
     status: 200,
@@ -29,7 +29,7 @@ export class WhatsAppController {
       type: 'object',
       example: {
         configured: true,
-        message: 'Z-API está configurado e pronto para uso',
+        message: 'WhatsApp está configurado e pronto para uso',
       },
     },
   })
@@ -38,8 +38,8 @@ export class WhatsAppController {
     return {
       configured: isConfigured,
       message: isConfigured
-        ? 'Z-API está configurado e pronto para uso'
-        : 'Z-API não está configurado. Verifique as variáveis de ambiente ZAPI_INSTANCE_ID, ZAPI_INSTANCE_TOKEN e ZAPI_ACCOUNT_TOKEN',
+        ? 'WhatsApp está configurado e pronto para uso'
+        : 'WhatsApp não está configurado. Verifique as variáveis de ambiente necessárias para o provedor oficial.',
     };
   }
 
@@ -48,7 +48,7 @@ export class WhatsAppController {
   @ApiOperation({
     summary: 'Testar envio WhatsApp (público)',
     description:
-      'Endpoint público para testar o envio de mensagens WhatsApp via Z-API. Use este endpoint para verificar se a configuração está funcionando corretamente.',
+      'Endpoint público para testar o envio de mensagens WhatsApp pelo provedor configurado. Use este endpoint para verificar se a configuração está funcionando corretamente.',
   })
   @ApiBody({
     schema: {
@@ -115,7 +115,7 @@ export class WhatsAppController {
   @ApiOperation({
     summary: 'Testar envio WhatsApp simples (sem botões)',
     description:
-      'Endpoint público para testar o envio de mensagens WhatsApp simples (sem botões) via Z-API. Use este endpoint para isolar problemas com botões.',
+      'Endpoint público para testar o envio de mensagens WhatsApp simples (sem botões) pelo provedor configurado.',
   })
   @ApiBody({
     schema: {
@@ -152,106 +152,114 @@ export class WhatsAppController {
     });
   }
 
-  @Post('generate-link')
+  @Post('test-template')
+  @Public()
   @ApiOperation({
-    summary: 'Gerar link WhatsApp (Click to Chat)',
+    summary: 'Testar envio de template WhatsApp',
     description:
-      'Gera um link WhatsApp gratuito (wa.me) que abre o WhatsApp com mensagem pré-preenchida. 100% gratuito, não requer API. Use este endpoint para gerar links que o usuário pode clicar para abrir WhatsApp.',
+      'Endpoint público para testar o envio de templates WhatsApp. Permite testar qualquer template aprovado com parâmetros customizados.',
   })
   @ApiBody({
     schema: {
       type: 'object',
-      required: ['phoneNumber', 'message'],
+      required: ['phoneNumber', 'templateName', 'language', 'parameters'],
       properties: {
         phoneNumber: {
           type: 'string',
-          description: 'Número de telefone (ex: 11999999999 ou +5511999999999)',
-          example: '11999999999',
+          description: 'Número de telefone (ex: 5511999999999)',
+          example: '5511999999999',
         },
-        message: {
+        templateName: {
           type: 'string',
-          description: 'Mensagem a ser pré-preenchida no WhatsApp',
-          example:
-            'Olá! Você entrou na fila da empresa XYZ e sua senha é A016.',
+          description: 'Nome do template aprovado (ex: queue_info)',
+          example: 'queue_info',
+        },
+        language: {
+          type: 'string',
+          description: 'Código do idioma (ex: pt_BR)',
+          example: 'pt_BR',
+        },
+        parameters: {
+          type: 'array',
+          description: 'Array de parâmetros do template',
+          items: {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                description: 'Tipo do parâmetro (geralmente "text")',
+                example: 'text',
+              },
+              text: {
+                type: 'string',
+                description: 'Texto do parâmetro',
+                example: 'Atendimento Geral',
+              },
+            },
+          },
+          example: [
+            { type: 'text', text: 'Atendimento Geral' },
+            { type: 'text', text: 'A123' },
+            { type: 'text', text: '15 minutos' },
+            { type: 'text', text: '2' },
+          ],
         },
       },
     },
   })
   @ApiResponse({
     status: 200,
-    description: 'Link WhatsApp gerado com sucesso',
+    description: 'Resultado do teste de envio de template',
     schema: {
       type: 'object',
-      example: {
-        success: true,
-        whatsappLink:
-          'https://wa.me/5511999999999?text=Ol%C3%A1%21%20Voc%C3%AA%20entrou%20na%20fila...',
-        message: 'Link WhatsApp gerado com sucesso',
-      },
-    },
-  })
-  async generateLink(@Body() body: { phoneNumber: string; message: string }) {
-    return this.whatsappService.generateWhatsAppLink(
-      body.phoneNumber,
-      body.message,
-    );
-  }
-
-  @Post('test-queue-notification-link')
-  @ApiOperation({
-    summary: 'Testar link de notificação de fila',
-    description:
-      'Gera um link WhatsApp para testar a notificação de entrada na fila. 100% gratuito, não requer configuração.',
-  })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['phoneNumber', 'tenantName', 'ticketToken'],
       properties: {
-        phoneNumber: {
-          type: 'string',
-          description: 'Número de telefone',
-          example: '11999999999',
+        success: {
+          type: 'boolean',
+          description: 'Indica se o envio foi bem-sucedido',
         },
-        tenantName: {
+        messageSid: {
           type: 'string',
-          description: 'Nome da empresa (tenant)',
-          example: 'Empresa XYZ',
+          description: 'ID da mensagem enviada',
         },
-        ticketToken: {
+        error: {
           type: 'string',
-          description: 'Número da senha do ticket',
-          example: 'A016',
+          description: 'Mensagem de erro (se houver)',
+        },
+        details: {
+          type: 'object',
+          description: 'Detalhes adicionais do erro (se houver)',
         },
       },
     },
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Link de notificação gerado com sucesso',
-  })
-  async testQueueNotificationLink(
+  async testTemplate(
     @Body()
     body: {
       phoneNumber: string;
-      tenantName: string;
-      ticketToken: string;
+      templateName: string;
+      language: string;
+      parameters: Array<{ type: string; text: string }>;
     },
   ) {
-    return this.whatsappService.generateQueueNotificationLink(
-      body.phoneNumber,
-      body.tenantName,
-      body.ticketToken,
-    );
+    return this.whatsappService.sendWhatsApp({
+      to: body.phoneNumber,
+      message: '',
+      template: {
+        name: body.templateName,
+        language: body.language,
+        parameters: body.parameters,
+      },
+    });
   }
 
   @Post('send')
   @UseGuards(TenantAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Enviar mensagem WhatsApp via Z-API (requer configuração)',
+    summary:
+      'Enviar mensagem WhatsApp via provedor configurado (requer configuração)',
     description:
-      'Envia mensagem WhatsApp automaticamente via Z-API. Requer configuração do Z-API. Se não configurado, retorna erro sugerindo usar geração de link.',
+      'Envia mensagem WhatsApp automaticamente via provedor configurado. Se não configurado, retorna erro sugerindo usar geração de link.',
   })
   @ApiBody({
     schema: {
@@ -274,7 +282,8 @@ export class WhatsAppController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Mensagem WhatsApp enviada com sucesso (se Z-API configurado)',
+    description:
+      'Mensagem WhatsApp enviada com sucesso (se o provedor estiver configurado)',
   })
   async sendWhatsApp(@Body() body: { phoneNumber: string; message: string }) {
     return this.whatsappService.sendWhatsApp({

@@ -17,7 +17,6 @@ import { MessagingModule } from './messaging/messaging.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { QueuesModule } from './queues/queues.module';
 import { IgniterModule } from './rt/igniter.module';
-import { SmsModule } from './sms/sms.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { TicketsModule } from './tickets/tickets.module';
@@ -57,7 +56,6 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
     AgentsModule,
     CorporateUsersModule,
     DashboardModule,
-    SmsModule,
     TelegramModule,
     WhatsAppModule,
     IgniterModule,
