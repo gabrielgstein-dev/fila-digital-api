@@ -13,12 +13,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     const connectWithTimeout = async () => {
       return Promise.race([
         this.$connect(),
-        new Promise(
-          (_, reject) =>
-            setTimeout(
-              () => reject(new Error('Timeout de conexão (10s)')),
-              10000,
-            ),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Timeout de conexão (10s)')),
+            10000,
+          ),
         ),
       ]);
     };
