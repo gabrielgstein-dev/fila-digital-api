@@ -159,13 +159,6 @@ jobs:
           exit 1
         fi
 
-        echo "✅ Verificando se o projeto existe..."
-        gcloud projects describe "$GCP_PROJECT_ID" || {
-          echo "❌ ERRO: Projeto $GCP_PROJECT_ID não existe ou não está acessível!"
-          echo "💡 Verifique se o projeto existe e se a conta de serviço tem permissões"
-          exit 1
-        }
-
         # Criar tag válida para Cloud Run (apenas letras minúsculas, números e hífens)
         # Remove sufixos problemáticos e substitui caracteres inválidos
         CLEAN_TAG=$(echo "v${VERSION}" | sed 's/-stage$//' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/-$//')
@@ -186,7 +179,6 @@ jobs:
         ENV_VARS="${ENV_VARS}##DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}"
         ENV_VARS="${ENV_VARS}##JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}"
         ENV_VARS="${ENV_VARS}##JWT_EXPIRES_IN=7d"
-        ENV_VARS="${ENV_VARS}##RABBITMQ_URL=${{ secrets.RABBITMQ_URL_STAGE }}"
         ENV_VARS="${ENV_VARS}##META_API_VERSION=${{ secrets.META_API_VERSION_STAGE }}"
         ENV_VARS="${ENV_VARS}##META_PHONE_NUMBER_ID=${{ secrets.META_PHONE_NUMBER_ID_STAGE }}"
         ENV_VARS="${ENV_VARS}##META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN_STAGE }}"

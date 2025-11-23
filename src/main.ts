@@ -1,13 +1,13 @@
-import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
-import helmet from 'helmet';
-import { AppModule } from './app.module';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
 import { type RequestHandler } from 'express';
+import helmet from 'helmet';
 import { Readable } from 'node:stream';
+import { AppModule } from './app.module';
 
 // === IMPORTANTE: seu router do Igniter ===
 import { AppRouter } from './rt/igniter.router';
@@ -86,11 +86,10 @@ async function bootstrap() {
   console.log('  PORT:', process.env.PORT || 'undefined');
   console.log('  DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
   console.log('  JWT_SECRET:', process.env.JWT_SECRET ? 'SET' : 'NOT SET');
-  console.log('  RABBITMQ_URL:', process.env.RABBITMQ_URL ? 'SET' : 'NOT SET');
 
   console.log('🏗️ [STEP 2] Criando aplicação NestJS...');
   const server = express();
-  
+
   let app;
   try {
     app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
@@ -222,7 +221,7 @@ async function bootstrap() {
     console.log('🔄 [STEP 9.1] Inicializando módulos da aplicação...');
     await app.init();
     console.log('✅ [STEP 9.1] Módulos inicializados!');
-    
+
     console.log('🔄 [STEP 9.2] Iniciando servidor HTTP...');
     await app.listen(port, '0.0.0.0');
     console.log('✅ [STEP 9.2] Servidor HTTP iniciado!');
@@ -243,7 +242,9 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   const gracefulShutdown = async (signal: string) => {
-    console.log(`\n🛑 [SHUTDOWN] Recebido sinal ${signal}, iniciando shutdown graceful...`);
+    console.log(
+      `\n🛑 [SHUTDOWN] Recebido sinal ${signal}, iniciando shutdown graceful...`,
+    );
     try {
       await app.close();
       console.log('✅ [SHUTDOWN] Aplicação encerrada com sucesso');
