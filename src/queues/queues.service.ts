@@ -9,7 +9,6 @@ import { ConfigService } from '@nestjs/config';
 import { TicketStatus } from '@prisma/client';
 import { ERROR_CODES } from '../common/constants/error-codes';
 import { CreateQueueDto } from '../common/dto/create-queue.dto';
-import { TicketNotificationService } from '../messaging/ticket-notification.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { WhatsAppQueueService } from '../whatsapp/whatsapp-queue.service';
@@ -19,7 +18,6 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 export class QueuesService {
   constructor(
     private prisma: PrismaService,
-    private ticketNotificationService: TicketNotificationService,
     private configService: ConfigService,
     private whatsappService: WhatsAppService,
     private whatsappQueueService: WhatsAppQueueService,
@@ -221,21 +219,6 @@ export class QueuesService {
     console.log(
       `✅ Fila ${queueId} atualizada: senha atual = ${updatedTicket.myCallingToken}`,
     );
-
-    // 🚀 ENVIAR NOTIFICAÇÃO via RabbitMQ
-    try {
-      await this.ticketNotificationService.notifyTicketCalled({
-        ticketId: updatedTicket.id,
-        queueName: updatedTicket.queue.name,
-        ticketNumber: updatedTicket.myCallingToken,
-        clientPhone: updatedTicket.clientPhone,
-        clientEmail: updatedTicket.clientEmail,
-        userId: updatedTicket.userId,
-      });
-    } catch (error) {
-      // Log erro mas não quebra o fluxo principal
-      console.error('Erro ao enviar notificação:', error);
-    }
 
     // 📱 ENVIAR NOTIFICAÇÃO TELEGRAM
     const telegramChatId = (updatedTicket as { telegramChatId?: string })
@@ -662,15 +645,6 @@ export class QueuesService {
           },
         },
       },
-    });
-
-    await this.ticketNotificationService.notifyTicketCalled({
-      ticketId: updatedTicket.id,
-      queueName: updatedTicket.queue.name,
-      ticketNumber: updatedTicket.myCallingToken,
-      clientPhone: updatedTicket.clientPhone,
-      clientEmail: updatedTicket.clientEmail,
-      userId: updatedTicket.userId,
     });
 
     return {

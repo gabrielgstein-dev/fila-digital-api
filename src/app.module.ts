@@ -13,7 +13,6 @@ import { TenantFilterInterceptor } from './common/interceptors/tenant-filter.int
 import { CorporateUsersModule } from './corporate-users/corporate-users.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { EventsModule } from './events/events.module';
-import { MessagingModule } from './messaging/messaging.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { QueuesModule } from './queues/queues.module';
 import { IgniterModule } from './rt/igniter.module';
@@ -32,17 +31,17 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
       {
         name: 'short',
         ttl: 1000,
-        limit: 100, // Aumentado para testes
+        limit: 100,
       },
       {
         name: 'medium',
         ttl: 10000,
-        limit: 1000, // Aumentado para testes
+        limit: 1000,
       },
       {
         name: 'long',
         ttl: 60000,
-        limit: 10000, // Aumentado para testes
+        limit: 10000,
       },
     ]),
     PrismaModule,
@@ -52,7 +51,6 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
     TicketsModule,
     EventsModule,
     ClientsModule,
-    MessagingModule,
     AgentsModule,
     CorporateUsersModule,
     DashboardModule,

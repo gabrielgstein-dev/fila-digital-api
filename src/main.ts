@@ -239,6 +239,25 @@ async function bootstrap() {
   console.log(`📖 [SUCCESS] Swagger em http://0.0.0.0:${port}/api`);
   console.log(`⚡ [SUCCESS] Igniter em http://0.0.0.0:${port}/api/rt`);
   console.log(`❤️ [SUCCESS] Health em http://0.0.0.0:${port}/api/v1/health`);
+
+  app.enableShutdownHooks();
+
+  const gracefulShutdown = async (signal: string) => {
+    console.log(`\n🛑 [SHUTDOWN] Recebido sinal ${signal}, iniciando shutdown graceful...`);
+    try {
+      await app.close();
+      console.log('✅ [SHUTDOWN] Aplicação encerrada com sucesso');
+      process.exit(0);
+    } catch (error) {
+      console.error('❌ [SHUTDOWN] Erro durante shutdown:', error);
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  return app;
 }
 
 bootstrap().catch((error) => {

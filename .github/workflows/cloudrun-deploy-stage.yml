@@ -213,8 +213,6 @@ jobs:
           --no-traffic \
           --tag "${CLEAN_TAG}" \
           --set-env-vars "${ENV_VARS}" \
-          --max-instance-startup-timeout 600s \
-          --health-check-path /api/v1/health \
           --project "$GCP_PROJECT_ID"
 
         echo "📊 Aguardando deploy estabilizar..."
