@@ -138,11 +138,47 @@ jobs:
       run: |
         echo "🚀 Fazendo deploy forçado com nova imagem..."
         VERSION="${{ steps.version_check.outputs.version }}"
+        
+        echo "🔍 Validando configurações do GCP..."
+        echo "GCP_PROJECT_ID: $GCP_PROJECT_ID"
+        echo "GCP_REGION: $GCP_REGION"
+        echo "SERVICE_NAME: $SERVICE_NAME"
+        
+        if [[ -z "$GCP_PROJECT_ID" ]]; then
+          echo "❌ ERRO: GCP_PROJECT_ID está vazio!"
+          exit 1
+        fi
+        
+        if [[ -z "$GCP_REGION" ]]; then
+          echo "❌ ERRO: GCP_REGION está vazio!"
+          exit 1
+        fi
+        
+        if [[ -z "$SERVICE_NAME" ]]; then
+          echo "❌ ERRO: SERVICE_NAME está vazio!"
+          exit 1
+        fi
+        
+        echo "✅ Verificando se o projeto existe..."
+        gcloud projects describe "$GCP_PROJECT_ID" || {
+          echo "❌ ERRO: Projeto $GCP_PROJECT_ID não existe ou não está acessível!"
+          echo "💡 Verifique se o projeto existe e se a conta de serviço tem permissões"
+          exit 1
+        }
+        
         # Criar tag válida para Cloud Run (apenas letras minúsculas, números e hífens)
         # Remove sufixos problemáticos e substitui caracteres inválidos
         CLEAN_TAG=$(echo "v${VERSION}" | sed 's/-stage$//' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/-$//')
         echo "Tag original: v${VERSION}"
         echo "Tag limpa: ${CLEAN_TAG}"
+
+        echo "🔍 Validando variáveis de ambiente obrigatórias..."
+        if [[ -z "${{ secrets.DATABASE_URL_STAGE }}" ]]; then
+          echo "⚠️ AVISO: DATABASE_URL_STAGE não está definido"
+        fi
+        if [[ -z "${{ secrets.JWT_SECRET_STAGE }}" ]]; then
+          echo "⚠️ AVISO: JWT_SECRET_STAGE não está definido"
+        fi
 
         ENV_VARS="^##^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}"
         ENV_VARS="${ENV_VARS}##CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com"
@@ -157,6 +193,9 @@ jobs:
         ENV_VARS="${ENV_VARS}##WHATSAPP_MIN_DELAY_MS=${{ secrets.WHATSAPP_MIN_DELAY_MS_STAGE }}"
         ENV_VARS="${ENV_VARS}##FRONTEND_URL=${{ secrets.FRONTEND_URL_STAGE }}"
 
+        echo "🚀 Iniciando deploy do Cloud Run..."
+        echo "Imagem: gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA"
+        
         gcloud run deploy "$SERVICE_NAME" \
           --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
           --region "$GCP_REGION" \
@@ -175,7 +214,8 @@ jobs:
           --tag "${CLEAN_TAG}" \
           --set-env-vars "${ENV_VARS}" \
           --max-instance-startup-timeout 600s \
-          --health-check-path /api/v1/health
+          --health-check-path /api/v1/health \
+          --project "$GCP_PROJECT_ID"
 
         echo "📊 Aguardando deploy estabilizar..."
         sleep 10

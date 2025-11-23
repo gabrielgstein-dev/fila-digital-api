@@ -90,8 +90,17 @@ async function bootstrap() {
 
   console.log('🏗️ [STEP 2] Criando aplicação NestJS...');
   const server = express();
-  const app = await NestFactory.create(AppModule, new ExpressAdapter(server));
-  console.log('✅ [STEP 2] Aplicação NestJS criada com sucesso!');
+  
+  let app;
+  try {
+    app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
+      logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+    });
+    console.log('✅ [STEP 2] Aplicação NestJS criada com sucesso!');
+  } catch (error) {
+    console.error('💥 [FATAL] Erro ao criar aplicação NestJS:', error);
+    throw error;
+  }
 
   console.log('⚙️ [STEP 3] Obtendo ConfigService...');
   const configService = app.get(ConfigService);
@@ -209,8 +218,21 @@ async function bootstrap() {
   console.log(`🚀 [STEP 9] Tentando iniciar servidor na porta: ${port}`);
   console.log(`🚀 [STEP 9] Fazendo bind em 0.0.0.0:${port}...`);
 
-  await app.init();
-  await app.listen(port, '0.0.0.0');
+  try {
+    console.log('🔄 [STEP 9.1] Inicializando módulos da aplicação...');
+    await app.init();
+    console.log('✅ [STEP 9.1] Módulos inicializados!');
+    
+    console.log('🔄 [STEP 9.2] Iniciando servidor HTTP...');
+    await app.listen(port, '0.0.0.0');
+    console.log('✅ [STEP 9.2] Servidor HTTP iniciado!');
+  } catch (error) {
+    console.error('💥 [FATAL] Erro ao iniciar servidor:', error);
+    console.error('💥 [FATAL] Tipo:', typeof error);
+    console.error('💥 [FATAL] Message:', error?.message);
+    console.error('💥 [FATAL] Stack:', error?.stack);
+    throw error;
+  }
 
   console.log('🎉 [SUCCESS] Servidor iniciado com sucesso!');
   console.log(`🌍 [SUCCESS] API Nest em http://0.0.0.0:${port}/api/v1`);

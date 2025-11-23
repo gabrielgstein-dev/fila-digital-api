@@ -26,7 +26,16 @@ export class PostgresListenerService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
-    await this.startListening();
+    this.logger.log('🔄 Iniciando PostgreSQL LISTEN (não bloqueante)...');
+    this.startListening().catch((error) => {
+      this.logger.error(
+        '❌ Erro ao iniciar PostgreSQL LISTEN (não crítico):',
+        error,
+      );
+      this.logger.warn(
+        '⚠️ Aplicação continuará sem PostgreSQL LISTEN - funcionalidade SSE pode não funcionar',
+      );
+    });
   }
 
   async onModuleDestroy() {
