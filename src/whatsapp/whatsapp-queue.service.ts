@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { WhatsAppResponse } from './providers/zapi/whatsapp-provider.interface';
+import { WhatsAppResponse } from './whatsapp-provider.interface';
 import { WhatsAppService } from './whatsapp.service';
 
 interface QueuedMessage {
@@ -14,6 +14,7 @@ interface QueuedMessage {
   baseUrl?: string;
   clientName?: string;
   queueName?: string;
+  isPositionUpdate?: boolean;
   retryCount: number;
   createdAt: Date;
   resolve: (result: WhatsAppResponse) => void;
@@ -71,6 +72,7 @@ export class WhatsAppQueueService implements OnModuleInit {
         baseUrl,
         clientName,
         queueName,
+        isPositionUpdate: false,
         retryCount: 0,
         createdAt: new Date(),
         resolve,
@@ -111,6 +113,7 @@ export class WhatsAppQueueService implements OnModuleInit {
         baseUrl,
         clientName,
         queueName,
+        isPositionUpdate: true,
         retryCount: 0,
         createdAt: new Date(),
         resolve,
@@ -183,7 +186,7 @@ export class WhatsAppQueueService implements OnModuleInit {
         `📤 [FILA] Enviando mensagem ${message.id} para ${message.phoneNumber} (tentativa ${message.retryCount + 1}/${this.maxRetries + 1})`,
       );
 
-      const result = message.queueName
+      const result = message.isPositionUpdate
         ? await this.whatsappService.sendPositionUpdateNotification(
             message.phoneNumber,
             message.tenantName,
