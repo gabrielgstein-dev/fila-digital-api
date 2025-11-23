@@ -20,226 +20,161 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # Aqui a gente injeta os secrets em variáveis de ambiente normais.
-    # O shell expande só na hora de rodar, então mesmo que tenha \n não quebra o script.
-    env:
-      NODE_ENV_STAGE: ${{ secrets.NODE_ENV_STAGE }}
-      DATABASE_URL_STAGE: ${{ secrets.DATABASE_URL_STAGE }}
-      JWT_SECRET_STAGE: ${{ secrets.JWT_SECRET_STAGE }}
-      META_API_VERSION_STAGE: ${{ secrets.META_API_VERSION_STAGE }}
-      META_PHONE_NUMBER_ID_STAGE: ${{ secrets.META_PHONE_NUMBER_ID_STAGE }}
-      META_ACCESS_TOKEN_STAGE: ${{ secrets.META_ACCESS_TOKEN_STAGE }}
-      WHATSAPP_MIN_DELAY_MS_STAGE: ${{ secrets.WHATSAPP_MIN_DELAY_MS_STAGE }}
-      FRONTEND_URL_STAGE: ${{ secrets.FRONTEND_URL_STAGE }}
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Extract version from tag
-        id: version_check
-        run: |
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-            echo "Tag detectada: $TAG_NAME"
+    - name: Extract version from tag
+      id: version_check
+      run: |
+        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "Tag detectada: $TAG_NAME"
 
-            if [[ "$TAG_NAME" == *"-stage" ]]; then
-              echo "should_deploy=true" >> $GITHUB_OUTPUT
-              echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
-              echo "✅ Deploy será executado para versão: $TAG_NAME"
-            else
-              echo "should_deploy=false" >> $GITHUB_OUTPUT
-              echo "❌ Tag não contém '-stage', deploy cancelado"
-            fi
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG_NAME="${{ github.event.inputs.tag }}"
+          if [[ "$TAG_NAME" == *"-stage" ]]; then
             echo "should_deploy=true" >> $GITHUB_OUTPUT
             echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
-            echo "✅ Deploy manual para versão: $TAG_NAME"
+            echo "✅ Deploy será executado para versão: $TAG_NAME"
           else
             echo "should_deploy=false" >> $GITHUB_OUTPUT
-            echo "❌ Evento não suportado para deploy"
+            echo "❌ Tag não contém '-stage', deploy cancelado"
           fi
+        elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          TAG_NAME="${{ github.event.inputs.tag }}"
+          echo "should_deploy=true" >> $GITHUB_OUTPUT
+          echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Deploy manual para versão: $TAG_NAME"
+        else
+          echo "should_deploy=false" >> $GITHUB_OUTPUT
+          echo "❌ Evento não suportado para deploy"
+        fi
 
-      - name: Authenticate to Google Cloud
-        if: steps.version_check.outputs.should_deploy == 'true'
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY_STAGE }}
+    - name: Authenticate to Google Cloud
+      if: steps.version_check.outputs.should_deploy == 'true'
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY_STAGE }}
 
-      - name: Setup Google Cloud CLI
-        if: steps.version_check.outputs.should_deploy == 'true'
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID_STAGE }}
+    - name: Setup Google Cloud CLI
+      if: steps.version_check.outputs.should_deploy == 'true'
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID_STAGE }}
 
-      - name: Configure Docker to use gcloud as a credential helper
-        if: steps.version_check.outputs.should_deploy == 'true'
-        run: |
-          echo "Configurando autenticação..."
-          gcloud auth list
-          gcloud config list
-          gcloud auth configure-docker gcr.io --quiet
+    - name: Configure Docker to use gcloud as a credential helper
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        echo "Configurando autenticação..."
+        gcloud auth list
+        gcloud config list
+        gcloud auth configure-docker gcr.io --quiet
 
-      - name: Force Clean Docker Cache Only
-        if: steps.version_check.outputs.should_deploy == 'true'
-        run: |
-          echo "🧹 Limpeza de cache Docker ANTES do build..."
+    - name: Force Clean Docker Cache Only
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        echo "🧹 Limpeza de cache Docker ANTES do build..."
+        docker system prune -af --volumes || true
+        docker builder prune -af || true
 
-          echo "🗑️ Limpando cache Docker local..."
-          docker system prune -af --volumes || true
-          docker builder prune -af || true
+        # Limpar imagens antigas (mantendo as 2 mais recentes)
+        gcloud container images list-tags gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME \
+          --limit=999 --sort-by=TIMESTAMP \
+          --format="get(digest)" --filter="timestamp.datetime < -P3D" | \
+          head -n -2 | \
+          while read digest; do
+            if [ ! -z "$digest" ]; then
+              gcloud container images delete gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME@$digest --quiet --force-delete-tags || true
+            fi
+          done
 
-          echo "🗑️ Limpando imagens antigas do Container Registry (>3 dias)..."
-          gcloud container images list-tags gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME \
-            --limit=999 --sort-by=TIMESTAMP \
-            --format="get(digest)" --filter="timestamp.datetime < -P3D" | \
-            head -n -2 | \
-            while read digest; do
-              if [ ! -z "$digest" ]; then
-                echo "Deletando imagem antiga: $digest"
-                gcloud container images delete gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME@$digest --quiet --force-delete-tags || true
-              fi
-            done
+    - name: Build Docker image
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        VERSION="${{ steps.version_check.outputs.version }}"
+        if [[ -z "$GCP_PROJECT_ID" || -z "$SERVICE_NAME" ]]; then
+          echo "❌ Variáveis de ambiente críticas vazias"
+          exit 1
+        fi
 
-          echo "✅ Limpeza de cache concluída, mantendo serviço Cloud Run intacto..."
+        docker build --platform linux/amd64 --no-cache -f Dockerfile.qa -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
 
-      - name: Build Docker image
-        if: steps.version_check.outputs.should_deploy == 'true'
-        run: |
-          VERSION="${{ steps.version_check.outputs.version }}"
-          echo "🔍 Debug Info:"
-          echo "GCP_PROJECT_ID: $GCP_PROJECT_ID"
-          echo "SERVICE_NAME: $SERVICE_NAME"
-          echo "VERSION: $VERSION"
+    - name: Push Docker image
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        VERSION="${{ steps.version_check.outputs.version }}"
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
+        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
 
-          if [[ -z "$GCP_PROJECT_ID" ]]; then
-            echo "❌ GCP_PROJECT_ID está vazio"
-            exit 1
-          fi
+    - name: Deploy to Cloud Run
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        echo "🚀 Fazendo deploy forçado com nova imagem..."
+        VERSION="${{ steps.version_check.outputs.version }}"
+        CLEAN_TAG=$(echo "v${VERSION}" | sed 's/-stage$//' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/-$//')
 
-          if [[ -z "$SERVICE_NAME" ]]; then
-            echo "❌ SERVICE_NAME está vazio"
-            exit 1
-          fi
+        echo "Tag limpa: ${CLEAN_TAG}"
 
-          docker build --platform linux/amd64 --no-cache -f Dockerfile.qa \
-            -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
-            -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
-            -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
+        # ---------------------------------------------------------------------
+        # TÉCNICA DO DELIMITADOR PERSONALIZADO (^;;^)
+        # Isso diz ao gcloud para separar as variáveis por ';;' em vez de ','
+        # Assim, podemos ter vírgulas dentro do CORS_ORIGIN sem quebrar o comando.
+        # ---------------------------------------------------------------------
 
-      - name: Push Docker image
-        if: steps.version_check.outputs.should_deploy == 'true'
-        run: |
-          VERSION="${{ steps.version_check.outputs.version }}"
-          echo "🔍 Debug antes do push:"
-          echo "Imagens construídas:"
-          docker images | grep gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME || true
+        ENV_VARS="^;;^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}"
+        ENV_VARS+=";;CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com"
+        ENV_VARS+=";;DATABASE_PROVIDER=render"
+        ENV_VARS+=";;DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}"
+        ENV_VARS+=";;JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}"
+        ENV_VARS+=";;JWT_EXPIRES_IN=7d"
+        ENV_VARS+=";;META_API_VERSION=${{ secrets.META_API_VERSION_STAGE }}"
+        ENV_VARS+=";;META_PHONE_NUMBER_ID=${{ secrets.META_PHONE_NUMBER_ID_STAGE }}"
+        ENV_VARS+=";;META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN_STAGE }}"
+        ENV_VARS+=";;WHATSAPP_MIN_DELAY_MS=${{ secrets.WHATSAPP_MIN_DELAY_MS_STAGE }}"
+        ENV_VARS+=";;FRONTEND_URL=${{ secrets.FRONTEND_URL_STAGE }}"
 
-          echo "Verificando autenticação:"
-          gcloud auth list
+        echo "🚀 Iniciando deploy..."
 
-          echo "Fazendo push das imagens:"
-          docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION
-          docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
-          docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
+        gcloud run deploy "$SERVICE_NAME" \
+          --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
+          --region "$GCP_REGION" \
+          --platform managed \
+          --allow-unauthenticated \
+          --port 8080 \
+          --memory 2Gi \
+          --cpu 2 \
+          --min-instances 0 \
+          --max-instances 10 \
+          --timeout 3600 \
+          --startup-timeout 300 \
+          --execution-environment gen2 \
+          --cpu-boost \
+          --no-traffic \
+          --tag "${CLEAN_TAG}" \
+          --project "$GCP_PROJECT_ID" \
+          --set-env-vars "$ENV_VARS"
 
-      - name: Deploy to Cloud Run
-        if: steps.version_check.outputs.should_deploy == 'true'
-        run: |
-          echo "🚀 Fazendo deploy forçado com nova imagem..."
-          VERSION="${{ steps.version_check.outputs.version }}"
+        echo "📊 Aguardando deploy estabilizar..."
+        sleep 10
 
-          echo "🔍 Validando configurações do GCP..."
-          echo "GCP_PROJECT_ID: $GCP_PROJECT_ID"
-          echo "GCP_REGION: $GCP_REGION"
-          echo "SERVICE_NAME: $SERVICE_NAME"
+        echo "🔄 Direcionando 100% do tráfego para nova versão..."
+        gcloud run services update-traffic "$SERVICE_NAME" \
+          --to-latest \
+          --region "$GCP_REGION"
 
-          if [[ -z "$GCP_PROJECT_ID" ]]; then
-            echo "❌ ERRO: GCP_PROJECT_ID está vazio!"
-            exit 1
-          fi
+    - name: Get service URL
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $GCP_REGION --format="value(status.url)")
+        VERSION="${{ steps.version_check.outputs.version }}"
+        echo "🚀 Backend deployed successfully!"
+        echo "📦 Version: $VERSION"
+        echo "🌐 URL: $SERVICE_URL"
+        echo "📚 API Docs: $SERVICE_URL/api"
 
-          if [[ -z "$GCP_REGION" ]]; then
-            echo "❌ ERRO: GCP_REGION está vazio!"
-            exit 1
-          fi
-
-          if [[ -z "$SERVICE_NAME" ]]; then
-            echo "❌ ERRO: SERVICE_NAME está vazio!"
-            exit 1
-          fi
-
-          # Criar tag válida para Cloud Run (apenas letras minúsculas, números e hífens)
-          CLEAN_TAG=$(echo "v${VERSION}" | sed 's/-stage$//' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/-$//')
-          echo "Tag original: v${VERSION}"
-          echo "Tag limpa: ${CLEAN_TAG}"
-
-          echo "🔍 Validando variáveis de ambiente obrigatórias..."
-          if [[ -z "$DATABASE_URL_STAGE" ]]; then
-            echo "⚠️ AVISO: DATABASE_URL_STAGE não está definido"
-          fi
-          if [[ -z "$JWT_SECRET_STAGE" ]]; then
-            echo "⚠️ AVISO: JWT_SECRET_STAGE não está definido"
-          fi
-
-          echo "🚀 Iniciando deploy do Cloud Run..."
-          echo "Imagem: gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA"
-
-          gcloud run deploy "$SERVICE_NAME" \
-            --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
-            --region "$GCP_REGION" \
-            --platform managed \
-            --allow-unauthenticated \
-            --port 8080 \
-            --memory 2Gi \
-            --cpu 2 \
-            --min-instances 0 \
-            --max-instances 10 \
-            --timeout 3600 \
-            --startup-timeout 300 \
-            --execution-environment gen2 \
-            --cpu-boost \
-            --no-traffic \
-            --tag "${CLEAN_TAG}" \
-            --set-env-vars NODE_ENV="$NODE_ENV_STAGE" \
-            --set-env-vars CORS_ORIGIN=https://fila-digital.com\,https://www.fila-digital.com\,https://app.fila-digital.com \
-            --set-env-vars DATABASE_PROVIDER=render \
-            --set-env-vars DATABASE_URL="$DATABASE_URL_STAGE" \
-            --set-env-vars JWT_SECRET="$JWT_SECRET_STAGE" \
-            --set-env-vars JWT_EXPIRES_IN=7d \
-            --set-env-vars META_API_VERSION="$META_API_VERSION_STAGE" \
-            --set-env-vars META_PHONE_NUMBER_ID="$META_PHONE_NUMBER_ID_STAGE" \
-            --set-env-vars META_ACCESS_TOKEN="$META_ACCESS_TOKEN_STAGE" \
-            --set-env-vars WHATSAPP_MIN_DELAY_MS="$WHATSAPP_MIN_DELAY_MS_STAGE" \
-            --set-env-vars FRONTEND_URL="$FRONTEND_URL_STAGE" \
-            --project "$GCP_PROJECT_ID"
-
-          echo "📊 Aguardando deploy estabilizar..."
-          sleep 10
-
-          echo "🔄 Direcionando 100% do tráfego para nova versão..."
-          gcloud run services update-traffic "$SERVICE_NAME" \
-            --to-latest \
-            --region "$GCP_REGION"
-
-      - name: Get service URL
-        if: steps.version_check.outputs.should_deploy == 'true'
-        run: |
-          SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" --region "$GCP_REGION" --format="value(status.url)")
-          VERSION="${{ steps.version_check.outputs.version }}"
-          echo "🚀 Backend deployed successfully!"
-          echo "📦 Version: $VERSION"
-          echo "🌐 URL: $SERVICE_URL"
-          echo "📚 API Docs: $SERVICE_URL/api"
-
-      - name: Skip deployment message
-        if: steps.version_check.outputs.should_deploy == 'false'
-        run: |
-          echo "⏭️ Deploy pulado - Tag não é válida para staging"
-          echo "💡 Para fazer deploy, execute um dos comandos:"
-          echo "   pnpm run version:patch  (cria tag X.X.X-stage)"
-          echo "   pnpm run version:minor  (cria tag X.X.X-stage)"
-          echo "   pnpm run version:major  (cria tag X.X.X-stage)"
-          echo ""
-          echo "🏷️ Tags válidas devem terminar com '-stage'"
+    - name: Skip deployment message
+      if: steps.version_check.outputs.should_deploy == 'false'
+      run: |
+        echo "⏭️ Deploy pulado - Tag não é válida para staging"
