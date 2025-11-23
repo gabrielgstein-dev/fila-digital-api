@@ -138,34 +138,34 @@ jobs:
       run: |
         echo "🚀 Fazendo deploy forçado com nova imagem..."
         VERSION="${{ steps.version_check.outputs.version }}"
-        
+
         echo "🔍 Validando configurações do GCP..."
         echo "GCP_PROJECT_ID: $GCP_PROJECT_ID"
         echo "GCP_REGION: $GCP_REGION"
         echo "SERVICE_NAME: $SERVICE_NAME"
-        
+
         if [[ -z "$GCP_PROJECT_ID" ]]; then
           echo "❌ ERRO: GCP_PROJECT_ID está vazio!"
           exit 1
         fi
-        
+
         if [[ -z "$GCP_REGION" ]]; then
           echo "❌ ERRO: GCP_REGION está vazio!"
           exit 1
         fi
-        
+
         if [[ -z "$SERVICE_NAME" ]]; then
           echo "❌ ERRO: SERVICE_NAME está vazio!"
           exit 1
         fi
-        
+
         echo "✅ Verificando se o projeto existe..."
         gcloud projects describe "$GCP_PROJECT_ID" || {
           echo "❌ ERRO: Projeto $GCP_PROJECT_ID não existe ou não está acessível!"
           echo "💡 Verifique se o projeto existe e se a conta de serviço tem permissões"
           exit 1
         }
-        
+
         # Criar tag válida para Cloud Run (apenas letras minúsculas, números e hífens)
         # Remove sufixos problemáticos e substitui caracteres inválidos
         CLEAN_TAG=$(echo "v${VERSION}" | sed 's/-stage$//' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/-$//')
@@ -195,7 +195,7 @@ jobs:
 
         echo "🚀 Iniciando deploy do Cloud Run..."
         echo "Imagem: gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA"
-        
+
         gcloud run deploy "$SERVICE_NAME" \
           --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
           --region "$GCP_REGION" \
