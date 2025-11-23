@@ -40,13 +40,6 @@ export class TicketsService {
   ) {
     try {
       this.logger.log(`Criando ticket para fila: ${queueId}`);
-      this.logger.debug(
-        `Dados do ticket: ${JSON.stringify({
-          clientName: createTicketDto.clientName,
-          clientPhone: createTicketDto.clientPhone,
-          priority: createTicketDto.priority,
-        })}`,
-      );
 
       const queue = await this.prisma.queue.findUnique({
         where: { id: queueId },
@@ -95,17 +88,6 @@ export class TicketsService {
       }
 
       const queuePrefix = this.getQueuePrefix(queue);
-
-      const lastTicket = await this.prisma.ticket.findFirst({
-        where: { queueId },
-        orderBy: { myCallingToken: 'desc' },
-      });
-
-      const lastNumber =
-        this.extractNumberFromToken(lastTicket?.myCallingToken) || 0;
-      const nextNumber = lastNumber + 1;
-      const nextToken = `${queuePrefix}${nextNumber}`;
-
       const estimatedTime = this.calculateEstimatedTime(
         waitingTicketsCount,
         queue.avgServiceTime,
@@ -119,27 +101,16 @@ export class TicketsService {
         telegramChatId: createTicketDto.telegramChatId ?? null,
         priority: createTicketDto.priority ?? 1,
         queueId,
-        myCallingToken: nextToken,
         estimatedTime,
         userId: userId || null,
         status: TicketStatus.WAITING,
       };
 
-      this.logger.debug(`Criando ticket no banco de dados: ${nextToken}`);
-
-      const ticket = await this.prisma.ticket.create({
-        data: ticketData,
-        include: {
-          queue: {
-            include: {
-              tenant: true,
-            },
-          },
-          user: true,
-        },
-      });
-
-      this.logger.log(`Ticket criado com sucesso: ${ticket.id} - ${nextToken}`);
+      const ticket = await this.createTicketWithRetry(
+        queueId,
+        queuePrefix,
+        ticketData,
+      );
 
       const position = waitingTicketsCount + 1;
 
@@ -702,6 +673,100 @@ export class TicketsService {
     );
   }
 
+  private async createTicketWithRetry(
+    queueId: string,
+    queuePrefix: string,
+    ticketData: {
+      clientName: string | null;
+      clientCpf: string | null;
+      clientPhone: string | null;
+      clientEmail: string | null;
+      telegramChatId: string | null;
+      priority: number;
+      queueId: string;
+      estimatedTime: number;
+      userId: string | null;
+      status: TicketStatus;
+    },
+    maxRetries = 5,
+  ) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await this.prisma.$queryRaw<Array<{ max_number: bigint | null }>>`
+          SELECT MAX(
+            CAST(
+              NULLIF(
+                REGEXP_REPLACE("myCallingToken", '[^0-9]', '', 'g'),
+                ''
+              ) AS INTEGER
+            )
+          ) as max_number
+          FROM tickets
+          WHERE "queueId" = ${queueId}
+            AND "myCallingToken" LIKE ${`${queuePrefix}%`}
+        `;
+
+        const maxNumber = result[0]?.max_number
+          ? Number(result[0].max_number)
+          : 0;
+        const nextNumber = maxNumber + 1;
+        const nextToken = `${queuePrefix}${nextNumber}`;
+
+        if (attempt > 1) {
+          this.logger.debug(
+            `Tentativa ${attempt}: Criando ticket com token ${nextToken}`,
+          );
+        }
+
+        const ticket = await this.prisma.ticket.create({
+          data: {
+            ...ticketData,
+            myCallingToken: nextToken,
+          },
+          include: {
+            queue: {
+              include: {
+                tenant: true,
+              },
+            },
+            user: true,
+          },
+        });
+
+        return ticket;
+      } catch (error: unknown) {
+        const prismaError = error as {
+          code?: string;
+          meta?: { target?: string[] };
+        };
+
+        const isUniqueConstraintError =
+          prismaError.code === 'P2002' &&
+          prismaError.meta?.target?.some(
+            (field) => field === 'myCallingToken' || field === 'queueId',
+          );
+
+        if (isUniqueConstraintError && attempt < maxRetries) {
+          const delay = Math.min(50 * attempt, 200);
+          this.logger.warn(
+            `Conflito de unicidade detectado no token (tentativa ${attempt}/${maxRetries}). Aguardando ${delay}ms antes de tentar novamente...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        this.logger.error(
+          `Erro ao criar ticket (tentativa ${attempt}): ${error instanceof Error ? error.message : String(error)}`,
+        );
+        throw error;
+      }
+    }
+
+    throw new InternalServerErrorException(
+      'Não foi possível criar ticket após múltiplas tentativas',
+    );
+  }
+
   private getQueuePrefix(queue: any): string {
     let prefix = 'G';
 
@@ -716,7 +781,6 @@ export class TicketsService {
 
   private extractNumberFromToken(token?: string): number {
     if (!token) return 0;
-    // Extrair número do token (ex: "B333" → 333)
     const match = token.match(/\d+$/);
     return match ? parseInt(match[0], 10) : 0;
   }
