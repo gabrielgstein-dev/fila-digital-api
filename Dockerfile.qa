@@ -19,10 +19,14 @@ RUN npm install -g pnpm
 # Copiar arquivos de configuração
 COPY package.json pnpm-lock.yaml ./
 
-# Instalar dependências
-RUN pnpm install --frozen-lockfile
+# Instalar dependências (incluindo devDependencies para o build)
+# Usar --shamefully-hoist para garantir layout compatível com Node.js padrão
+# Isso coloca todas as dependências em node_modules/ diretamente, sem symlinks complexos
+RUN pnpm config set shamefully-hoist true && \
+    pnpm install --frozen-lockfile
 
 # Copiar código fonte
+# O .dockerignore já exclui node_modules/, então os node_modules instalados acima são preservados
 COPY . .
 
 # Gerar Prisma Client
