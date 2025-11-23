@@ -192,7 +192,17 @@ jobs:
           --cpu-boost \
           --no-traffic \
           --tag "${CLEAN_TAG}" \
-          --set-env-vars NODE_ENV=${{ secrets.NODE_ENV_STAGE }},CORS_ORIGIN="https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com",DATABASE_PROVIDER=render,DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }},JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }},JWT_EXPIRES_IN=7d,META_API_VERSION=${{ secrets.META_API_VERSION_STAGE }},META_PHONE_NUMBER_ID=${{ secrets.META_PHONE_NUMBER_ID_STAGE }},META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN_STAGE }},WHATSAPP_MIN_DELAY_MS=${{ secrets.WHATSAPP_MIN_DELAY_MS_STAGE }},FRONTEND_URL=${{ secrets.FRONTEND_URL_STAGE }} \
+          --set-env-vars NODE_ENV=${{ secrets.NODE_ENV_STAGE }} \
+          --set-env-vars CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com \
+          --set-env-vars DATABASE_PROVIDER=render \
+          --set-env-vars DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }} \
+          --set-env-vars JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }} \
+          --set-env-vars JWT_EXPIRES_IN=7d \
+          --set-env-vars META_API_VERSION=${{ secrets.META_API_VERSION_STAGE }} \
+          --set-env-vars META_PHONE_NUMBER_ID=${{ secrets.META_PHONE_NUMBER_ID_STAGE }} \
+          --set-env-vars META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN_STAGE }} \
+          --set-env-vars WHATSAPP_MIN_DELAY_MS=${{ secrets.WHATSAPP_MIN_DELAY_MS_STAGE }} \
+          --set-env-vars FRONTEND_URL=${{ secrets.FRONTEND_URL_STAGE }} \
           --project "$GCP_PROJECT_ID"
 
         echo "📊 Aguardando deploy estabilizar..."

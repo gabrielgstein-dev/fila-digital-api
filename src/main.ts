@@ -213,7 +213,7 @@ async function bootstrap() {
   app.getHttpAdapter().getInstance().use('/api/rt', igniterHandler);
   console.log('⚡ [IGNITER] Montado em /api/rt');
 
-  const port = process.env.PORT || 8080;
+  const port = process.env.PORT ? Number(process.env.PORT) : 3001;
   console.log(`🚀 [STEP 9] Tentando iniciar servidor na porta: ${port}`);
   console.log(`🚀 [STEP 9] Fazendo bind em 0.0.0.0:${port}...`);
 
