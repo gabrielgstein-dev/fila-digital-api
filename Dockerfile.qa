@@ -37,8 +37,8 @@ RUN echo "🔍 Verificando arquivos src..." && \
     echo "---" && \
     cat tsconfig.build.json && \
     echo "---" && \
-    echo "🚀 Tentando build com verbose..." && \
-    pnpm run build --verbose
+    echo "🚀 Tentando build normal..." && \
+    pnpm run build
 
 # Definir variáveis de ambiente padrão
 ENV NODE_ENV=production
