@@ -38,7 +38,7 @@ describe('Queues Actions E2E', () => {
       expect(response.body).toMatchObject({
         id: ticket1.id,
         status: 'CALLED',
-        calledAt: expect.any(Object), // Timestamp como objeto
+        calledAt: expect.any(String), // Timestamp como string ISO
       });
     });
 
@@ -66,7 +66,7 @@ describe('Queues Actions E2E', () => {
         ticket: expect.objectContaining({
           id: ticket.id,
           status: 'CALLED',
-          calledAt: expect.any(Object), // Timestamp como objeto
+          calledAt: expect.any(String), // Timestamp como string ISO
         }),
       });
     });

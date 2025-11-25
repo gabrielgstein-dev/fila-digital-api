@@ -1,5 +1,29 @@
 import { TestHelper } from './test-setup';
 
+// Função para gerar CPF válido
+function generateValidCPF(): string {
+  const generateDigit = (cpf: string[]): number => {
+    const weights = cpf.length + 1;
+    let sum = 0;
+    for (let i = 0; i < cpf.length; i++) {
+      sum += parseInt(cpf[i]) * (weights - i);
+    }
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+
+  // Gera 9 dígitos aleatórios
+  const baseDigits = Array.from({ length: 9 }, () =>
+    Math.floor(Math.random() * 10),
+  );
+
+  // Calcula os dois dígitos verificadores
+  const firstDigit = generateDigit(baseDigits);
+  const secondDigit = generateDigit([...baseDigits, firstDigit]);
+
+  return [...baseDigits, firstDigit, secondDigit].join('');
+}
+
 describe('Error Handling E2E', () => {
   let testHelper: TestHelper;
 
@@ -37,10 +61,11 @@ describe('Error Handling E2E', () => {
 
       const validCpfData = {
         email: `test-${Date.now()}@empresa.com`,
-        cpf: '12345678901', // CPF com 11 dígitos
+        cpf: generateValidCPF(), // CPF válido
         name: 'Teste CPF Válido',
         password: 'senha123',
         role: 'OPERADOR',
+        tenantId: tenant.id, // Adicionando tenantId obrigatório
       };
 
       const response = await testHelper
@@ -50,7 +75,13 @@ describe('Error Handling E2E', () => {
         .send(validCpfData)
         .expect(201);
 
-      expect(response.body.cpf).toBe(validCpfData.cpf);
+      expect(response.body).toMatchObject({
+        email: validCpfData.email,
+        cpf: validCpfData.cpf,
+        name: validCpfData.name,
+        role: validCpfData.role,
+        tenantId: tenant.id,
+      });
     });
 
     it('deve aceitar email válido na criação de agente', async () => {
@@ -59,10 +90,11 @@ describe('Error Handling E2E', () => {
 
       const validEmailData = {
         email: `valid-${Date.now()}@empresa.com`,
-        cpf: '12345678902',
+        cpf: generateValidCPF(), // CPF válido
         name: 'Teste Email Válido',
         password: 'senha123',
         role: 'OPERADOR',
+        tenantId: tenant.id, // Adicionando tenantId obrigatório
       };
 
       const response = await testHelper
@@ -173,10 +205,11 @@ describe('Error Handling E2E', () => {
 
       const newAgentData = {
         email: `novo-agente-${Date.now()}@empresa.com`,
-        cpf: '98765432101',
+        cpf: generateValidCPF(),
         name: 'Novo Agente',
         password: 'senha123',
         role: 'OPERADOR',
+        tenantId: tenant.id, // Adicionando tenantId para passar pela validação
       };
 
       await testHelper
@@ -279,10 +312,11 @@ describe('Error Handling E2E', () => {
       // Criar primeiro agente
       const firstAgentData = {
         email: duplicateEmail,
-        cpf: '11111111111',
+        cpf: generateValidCPF(),
         name: 'Primeiro Agente',
         password: 'senha123',
         role: 'OPERADOR',
+        tenantId: tenant.id,
       };
 
       await testHelper
@@ -295,10 +329,11 @@ describe('Error Handling E2E', () => {
       // Tentar criar segundo com mesmo email
       const secondAgentData = {
         email: duplicateEmail,
-        cpf: '22222222222',
+        cpf: generateValidCPF(),
         name: 'Segundo Agente',
         password: 'senha123',
         role: 'OPERADOR',
+        tenantId: tenant.id,
       };
 
       await testHelper
@@ -313,7 +348,7 @@ describe('Error Handling E2E', () => {
       const { tenant, token } =
         await testHelper.setupCompleteTestDataWithAuth();
 
-      const duplicateCpf = '12345678901';
+      const duplicateCpf = generateValidCPF();
 
       // Criar primeiro agente
       const firstAgentData = {
@@ -322,6 +357,7 @@ describe('Error Handling E2E', () => {
         name: 'Primeiro Agente',
         password: 'senha123',
         role: 'OPERADOR',
+        tenantId: tenant.id,
       };
 
       await testHelper
@@ -332,12 +368,14 @@ describe('Error Handling E2E', () => {
         .expect(201);
 
       // Tentar criar segundo com mesmo CPF
+      // Segundo agente com mesmo CPF
       const secondAgentData = {
         email: `second-${Date.now()}@empresa.com`,
         cpf: duplicateCpf,
         name: 'Segundo Agente',
         password: 'senha123',
         role: 'OPERADOR',
+        tenantId: tenant.id,
       };
 
       await testHelper
@@ -357,10 +395,11 @@ describe('Error Handling E2E', () => {
       // Criar payload normal
       const normalPayload = {
         email: `test-${Date.now()}@empresa.com`,
-        cpf: '12345678903',
+        cpf: generateValidCPF(),
         name: 'Nome Normal',
         password: 'senha123',
         role: 'OPERADOR',
+        tenantId: tenant.id,
       };
 
       const response = await testHelper
@@ -418,10 +457,11 @@ describe('Error Handling E2E', () => {
 
       const specialCharsData = {
         email: `special-${Date.now()}@empresa.com`,
-        cpf: '99999999999',
+        cpf: generateValidCPF(),
         name: 'José da Silva Ção Ãção', // Acentos e caracteres especiais
         password: 'senha123',
         role: 'OPERADOR',
+        tenantId: tenant.id,
       };
 
       const response = await testHelper
@@ -440,10 +480,11 @@ describe('Error Handling E2E', () => {
 
       const minimalData = {
         email: `minimal-${Date.now()}@empresa.com`,
-        cpf: '88888888888',
+        cpf: generateValidCPF(),
         name: 'Agente Mínimo',
         password: 'senha123',
         role: 'OPERADOR',
+        tenantId: tenant.id,
       };
 
       const response = await testHelper

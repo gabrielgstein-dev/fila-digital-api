@@ -1,10 +1,46 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { Test, TestingModule } from '@nestjs/testing';
+import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import * as request from 'supertest';
 import { cleanDatabase } from './setup-database';
+
+// 🛡️ SEGURANÇA: Garante que testes e2e só rodem no Docker
+if (!process.env.DOCKER_ENV) {
+  console.error(
+    '❌ ERRO CRÍTICO: Testes e2e só podem ser executados no ambiente Docker!',
+  );
+  console.error('   Use: npm run test:e2e:docker');
+  console.error(
+    '   Isso protege o banco de dados de QA contra execuções acidentais.',
+  );
+  process.exit(1);
+}
+
+// Função para gerar CPF válido
+function generateValidCPF(): string {
+  const generateDigit = (cpf: string[]): number => {
+    const weights = cpf.length + 1;
+    let sum = 0;
+    for (let i = 0; i < cpf.length; i++) {
+      sum += parseInt(cpf[i]) * (weights - i);
+    }
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+
+  // Gera 9 dígitos aleatórios
+  const baseDigits = Array.from({ length: 9 }, () =>
+    Math.floor(Math.random() * 10),
+  );
+
+  // Calcula os dois dígitos verificadores
+  const firstDigit = generateDigit(baseDigits);
+  const secondDigit = generateDigit([...baseDigits, firstDigit]);
+
+  return [...baseDigits, firstDigit, secondDigit].join('');
+}
 
 export class TestHelper {
   public app: INestApplication;
@@ -109,7 +145,7 @@ export class TestHelper {
     const bcrypt = await import('bcrypt');
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 1000);
-    const cpf = `${timestamp.toString().slice(-8)}${random.toString().padStart(3, '0')}`;
+    const cpf = generateValidCPF();
 
     const agent = await this.prisma.agent.create({
       data: {
@@ -200,7 +236,7 @@ export class TestHelper {
     const bcrypt = await import('bcrypt');
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 10);
-    const cpf = `9876543210${random}`;
+    const cpf = generateValidCPF();
 
     const user = await this.prisma.corporateUser.create({
       data: {

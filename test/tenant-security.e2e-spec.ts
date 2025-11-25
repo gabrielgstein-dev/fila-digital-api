@@ -1,5 +1,29 @@
-import { TestHelper } from './test-setup';
 import * as request from 'supertest';
+import { TestHelper } from './test-setup';
+
+// Função para gerar CPF válido
+function generateValidCPF(): string {
+  const generateDigit = (cpf: string[]): number => {
+    const weights = cpf.length + 1;
+    let sum = 0;
+    for (let i = 0; i < cpf.length; i++) {
+      sum += parseInt(cpf[i]) * (weights - i);
+    }
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+
+  // Gera 9 dígitos aleatórios
+  const baseDigits = Array.from({ length: 9 }, () =>
+    Math.floor(Math.random() * 10),
+  );
+
+  // Calcula os dois dígitos verificadores
+  const firstDigit = generateDigit(baseDigits);
+  const secondDigit = generateDigit([...baseDigits, firstDigit]);
+
+  return [...baseDigits, firstDigit, secondDigit].join('');
+}
 
 describe('Tenant Security System (e2e)', () => {
   let testHelper: TestHelper;
@@ -7,6 +31,11 @@ describe('Tenant Security System (e2e)', () => {
   let tenant2: any;
   let admin1Token: string;
   let agent1Token: string;
+
+  // CPFs válidos para uso consistente nos testes
+  const admin1Cpf = generateValidCPF();
+  const agent1Cpf = generateValidCPF();
+  const admin2Cpf = generateValidCPF();
 
   beforeAll(async () => {
     testHelper = await TestHelper.createInstance();
@@ -32,7 +61,7 @@ describe('Tenant Security System (e2e)', () => {
       name: 'Admin Empresa 1',
       password: await bcrypt.hash('senha123', 10),
       role: 'ADMINISTRADOR',
-      cpf: '11111111111',
+      cpf: admin1Cpf,
     });
 
     await testHelper.createAgent(tenant1.id, {
@@ -40,7 +69,7 @@ describe('Tenant Security System (e2e)', () => {
       name: 'Agente Empresa 1',
       password: await bcrypt.hash('senha123', 10),
       role: 'OPERADOR',
-      cpf: '22222222222',
+      cpf: agent1Cpf,
     });
 
     await testHelper.createAgent(tenant2.id, {
@@ -48,7 +77,7 @@ describe('Tenant Security System (e2e)', () => {
       name: 'Admin Empresa 2',
       password: await bcrypt.hash('senha123', 10),
       role: 'ADMINISTRADOR',
-      cpf: '44444444444',
+      cpf: admin2Cpf,
     });
   });
 
@@ -80,7 +109,7 @@ describe('Tenant Security System (e2e)', () => {
       name: 'Admin Empresa 1',
       password: await bcrypt.hash('senha123', 10),
       role: 'ADMINISTRADOR',
-      cpf: '11111111111',
+      cpf: admin1Cpf,
     });
 
     await testHelper.createAgent(tenant1.id, {
@@ -88,14 +117,14 @@ describe('Tenant Security System (e2e)', () => {
       name: 'Agente Empresa 1',
       password: await bcrypt.hash('senha123', 10),
       role: 'OPERADOR',
-      cpf: '22222222222',
+      cpf: agent1Cpf,
     });
 
     // Gerar tokens após recriar os agentes
     const admin1Response = await request(testHelper.app.getHttpServer())
       .post('/api/v1/auth/agent/login')
       .send({
-        cpf: '11111111111',
+        cpf: admin1Cpf,
         password: 'senha123',
       });
 
@@ -104,7 +133,7 @@ describe('Tenant Security System (e2e)', () => {
     const agent1Response = await request(testHelper.app.getHttpServer())
       .post('/api/v1/auth/agent/login')
       .send({
-        cpf: '22222222222',
+        cpf: agent1Cpf,
         password: 'senha123',
       });
 
@@ -149,11 +178,12 @@ describe('Tenant Security System (e2e)', () => {
     describe('Gerenciamento de Agentes', () => {
       it('deve permitir que admin crie agente em seu tenant', async () => {
         const newAgent = {
-          email: 'novo@empresa1.com',
+          email: `novo-agente-${Date.now()}@empresa.com`,
           name: 'Novo Agente',
           password: 'senha123',
           role: 'OPERADOR',
-          cpf: '333.333.333-33',
+          cpf: generateValidCPF(),
+          tenantId: tenant1.id,
         };
 
         const response = await request(testHelper.app.getHttpServer())
@@ -168,11 +198,12 @@ describe('Tenant Security System (e2e)', () => {
 
       it('deve negar que agente crie outro agente', async () => {
         const newAgent = {
-          email: 'outro@empresa1.com',
-          name: 'Outro Agente',
+          email: `agente-falso-${Date.now()}@empresa.com`,
+          name: 'Agente Falso',
           password: 'senha123',
           role: 'OPERADOR',
-          cpf: '555.555.555-55',
+          cpf: generateValidCPF(),
+          tenantId: tenant1.id,
         };
 
         await request(testHelper.app.getHttpServer())
@@ -188,7 +219,8 @@ describe('Tenant Security System (e2e)', () => {
           name: 'Agente Invasor',
           password: 'senha123',
           role: 'OPERADOR',
-          cpf: '666.666.666-66',
+          cpf: generateValidCPF(),
+          tenantId: tenant2.id,
         };
 
         await request(testHelper.app.getHttpServer())

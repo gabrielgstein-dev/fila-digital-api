@@ -1,10 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { Test, TestingModule } from '@nestjs/testing';
+import * as bcrypt from 'bcrypt';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import * as bcrypt from 'bcrypt';
 import { cleanDatabase, teardownTestDatabase } from './setup-database';
 
 describe('QueuesController (e2e)', () => {
@@ -336,9 +336,9 @@ describe('QueuesController (e2e)', () => {
       const ticket = createTicketResponse.body;
 
       // Marcar ticket como concluído diretamente no banco
-      await testHelper.getPrisma().ticket.update({
+      await prisma.ticket.update({
         where: { id: ticket.id },
-        data: { 
+        data: {
           status: 'COMPLETED',
           completedAt: new Date(),
         },

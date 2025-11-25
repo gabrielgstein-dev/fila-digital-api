@@ -1,5 +1,29 @@
 import { TestHelper } from './test-setup';
 
+// Função para gerar CPF válido
+function generateValidCPF(): string {
+  const generateDigit = (cpf: string[]): number => {
+    const weights = cpf.length + 1;
+    let sum = 0;
+    for (let i = 0; i < cpf.length; i++) {
+      sum += parseInt(cpf[i]) * (weights - i);
+    }
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+
+  // Gera 9 dígitos aleatórios
+  const baseDigits = Array.from({ length: 9 }, () =>
+    Math.floor(Math.random() * 10),
+  );
+
+  // Calcula os dois dígitos verificadores
+  const firstDigit = generateDigit(baseDigits);
+  const secondDigit = generateDigit([...baseDigits, firstDigit]);
+
+  return [...baseDigits, firstDigit, secondDigit].join('');
+}
+
 describe('Agents Complete E2E', () => {
   let testHelper: TestHelper;
 
@@ -20,20 +44,35 @@ describe('Agents Complete E2E', () => {
       const { tenant, token } =
         await testHelper.setupCompleteTestDataWithAuth();
 
+      // Gera um CPF válido e único
+      const cpf = generateValidCPF();
+      const email = `novo-agente-${Date.now()}@empresa.com`;
+
       const createAgentData = {
-        email: `novo-agente-${Date.now()}@empresa.com`,
-        cpf: `12345678901`,
+        email: email,
+        cpf: cpf, // CPF válido
         name: 'Novo Agente Teste',
-        password: 'senha123',
+        password: 'Senha123!', // Senha mais forte
         role: 'OPERADOR',
+        tenantId: tenant.id, // Adicionando tenantId obrigatório
       };
 
       const response = await testHelper
         .getRequest()
         .post(`/api/v1/tenants/${tenant.id}/agents`)
         .set('Authorization', `Bearer ${token}`)
-        .send(createAgentData)
-        .expect(201);
+        .send(createAgentData);
+
+      if (response.status !== 201) {
+        console.log(
+          'Erro na criação do agente:',
+          response.status,
+          response.body,
+        );
+        console.log('Dados enviados:', createAgentData);
+      }
+
+      expect(response.status).toBe(201);
 
       expect(response.body).toMatchObject({
         email: createAgentData.email,
@@ -160,7 +199,7 @@ describe('Agents Complete E2E', () => {
         .post(`/api/v1/tenants/${tenant.id}/agents`)
         .set('Authorization', `Bearer ${token}`)
         .send(invalidData)
-        .expect(500); // O Prisma retorna 500 quando campos obrigatórios estão faltando
+        .expect(400); // ValidationPipe retorna 400 quando campos obrigatórios estão faltando
     });
   });
 

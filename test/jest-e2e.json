@@ -20,13 +20,19 @@
   "setupFilesAfterEnv": ["<rootDir>/test-setup.ts"],
   "globalTeardown": "<rootDir>/global-teardown.ts",
   "testSequencer": "<rootDir>/test-sequencer.js",
-  "verbose": false,
-  "silent": true,
+  "verbose": true,
+  "silent": false,
   "noStackTrace": true,
   "bail": 0,
   "maxConcurrency": 1,
   "cache": false,
   "clearMocks": true,
   "resetMocks": true,
-  "restoreMocks": true
+  "restoreMocks": true,
+  "globals": {
+    "ts-jest": {
+      "isolatedModules": true
+    }
+  },
+  "setupFiles": ["<rootDir>/crypto-polyfill.js"]
 }
