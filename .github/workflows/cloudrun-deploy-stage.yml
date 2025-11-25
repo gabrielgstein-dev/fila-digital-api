@@ -21,146 +21,145 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Extract version from tag
-      id: version_check
-      run: |
-        if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "Tag detectada: $TAG_NAME"
+      - name: Extract version from tag
+        id: version_check
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            echo "Tag detectada: $TAG_NAME"
 
-          if [[ "$TAG_NAME" == *"-stage" ]]; then
+            if [[ "$TAG_NAME" == *"-stage" ]]; then
+              echo "should_deploy=true" >> $GITHUB_OUTPUT
+              echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
+              echo "✅ Deploy será executado para versão: $TAG_NAME"
+            else
+              echo "should_deploy=false" >> $GITHUB_OUTPUT
+              echo "❌ Tag não contém '-stage', deploy cancelado"
+            fi
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG_NAME="${{ github.event.inputs.tag }}"
             echo "should_deploy=true" >> $GITHUB_OUTPUT
             echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
-            echo "✅ Deploy será executado para versão: $TAG_NAME"
+            echo "✅ Deploy manual para versão: $TAG_NAME"
           else
             echo "should_deploy=false" >> $GITHUB_OUTPUT
-            echo "❌ Tag não contém '-stage', deploy cancelado"
+            echo "❌ Evento não suportado para deploy"
           fi
-        elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          TAG_NAME="${{ github.event.inputs.tag }}"
-          echo "should_deploy=true" >> $GITHUB_OUTPUT
-          echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "✅ Deploy manual para versão: $TAG_NAME"
-        else
-          echo "should_deploy=false" >> $GITHUB_OUTPUT
-          echo "❌ Evento não suportado para deploy"
-        fi
 
-    - name: Authenticate to Google Cloud
-      if: steps.version_check.outputs.should_deploy == 'true'
-      uses: google-github-actions/auth@v2
-      with:
-        credentials_json: ${{ secrets.GCP_SA_KEY_STAGE }}
+      - name: Authenticate to Google Cloud
+        if: steps.version_check.outputs.should_deploy == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_STAGE }}
 
-    - name: Setup Google Cloud CLI
-      if: steps.version_check.outputs.should_deploy == 'true'
-      uses: google-github-actions/setup-gcloud@v2
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID_STAGE }}
+      - name: Setup Google Cloud CLI
+        if: steps.version_check.outputs.should_deploy == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID_STAGE }}
 
-    - name: Configure Docker to use gcloud as a credential helper
-      if: steps.version_check.outputs.should_deploy == 'true'
-      run: |
-        echo "Configurando autenticação..."
-        gcloud auth list
-        gcloud config list
-        gcloud auth configure-docker gcr.io --quiet
+      - name: Configure Docker to use gcloud as a credential helper
+        if: steps.version_check.outputs.should_deploy == 'true'
+        run: |
+          echo "Configurando autenticação..."
+          gcloud auth list
+          gcloud config list
+          gcloud auth configure-docker gcr.io --quiet
 
-    - name: Force Clean Docker Cache Only
-      if: steps.version_check.outputs.should_deploy == 'true'
-      run: |
-        echo "🧹 Limpeza de cache Docker ANTES do build..."
-        docker system prune -af --volumes || true
-        docker builder prune -af || true
+      - name: Force Clean Docker Cache Only
+        if: steps.version_check.outputs.should_deploy == 'true'
+        run: |
+          echo "🧹 Limpeza de cache Docker ANTES do build..."
+          docker system prune -af --volumes || true
+          docker builder prune -af || true
 
-        # Limpar imagens antigas
-        gcloud container images list-tags gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME \
-          --limit=999 --sort-by=TIMESTAMP \
-          --format="get(digest)" --filter="timestamp.datetime < -P3D" | \
-          head -n -2 | \
-          while read digest; do
-            if [ ! -z "$digest" ]; then
-              gcloud container images delete gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME@$digest --quiet --force-delete-tags || true
-            fi
-          done
+          # Limpar imagens antigas
+          gcloud container images list-tags gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME \
+            --limit=999 --sort-by=TIMESTAMP \
+            --format="get(digest)" --filter="timestamp.datetime < -P3D" | \
+            head -n -2 | \
+            while read digest; do
+              if [ ! -z "$digest" ]; then
+                gcloud container images delete gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME@$digest --quiet --force-delete-tags || true
+              fi
+            done
 
-    - name: Build Docker image
-      if: steps.version_check.outputs.should_deploy == 'true'
-      run: |
-        VERSION="${{ steps.version_check.outputs.version }}"
-        if [[ -z "$GCP_PROJECT_ID" || -z "$SERVICE_NAME" ]]; then
-          echo "❌ Variáveis de ambiente críticas vazias"
-          exit 1
-        fi
+      - name: Build Docker image
+        if: steps.version_check.outputs.should_deploy == 'true'
+        run: |
+          VERSION="${{ steps.version_check.outputs.version }}"
+          if [[ -z "$GCP_PROJECT_ID" || -z "$SERVICE_NAME" ]]; then
+            echo "❌ Variáveis de ambiente críticas vazias"
+            exit 1
+          fi
 
-        docker build --platform linux/amd64 --no-cache -f Dockerfile.qa -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
-                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
-                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
+          docker build --platform linux/amd64 --no-cache -f Dockerfile.qa -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+                       -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+                       -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
 
-    - name: Push Docker image
-      if: steps.version_check.outputs.should_deploy == 'true'
-      run: |
-        VERSION="${{ steps.version_check.outputs.version }}"
-        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION
-        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
-        docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
+      - name: Push Docker image
+        if: steps.version_check.outputs.should_deploy == 'true'
+        run: |
+          VERSION="${{ steps.version_check.outputs.version }}"
+          docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION
+          docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
+          docker push gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest
 
-    - name: Deploy to Cloud Run
-      if: steps.version_check.outputs.should_deploy == 'true'
-      run: |
-        echo "🚀 Fazendo deploy forçado com nova imagem..."
-        VERSION="${{ steps.version_check.outputs.version }}"
-        gcloud run services update $SERVICE_NAME \
-          --image=gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
-          --region=$GCP_REGION \
-          --project=$GCP_PROJECT_ID \
-          --platform=managed \
-          --force-update-tags \
-          --update-env-vars="VERSION=$VERSION" \
-          --quiet
+      - name: Deploy to Cloud Run
+        if: steps.version_check.outputs.should_deploy == 'true'
+        run: |
+          echo "🚀 Fazendo deploy forçado com nova imagem..."
+          VERSION="${{ steps.version_check.outputs.version }}"
+          gcloud run services update $SERVICE_NAME \
+            --image=gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+            --region=$GCP_REGION \
+            --project=$GCP_PROJECT_ID \
+            --platform=managed \
+            --update-env-vars="VERSION=$VERSION" \
+            --quiet
 
-    - name: Run Prisma Migrations
-      if: steps.version_check.outputs.should_deploy == 'true'
-      run: |
-        echo "🔄 Aplicando migrações do banco de dados..."
+      - name: Run Prisma Migrations
+        if: steps.version_check.outputs.should_deploy == 'true'
+        run: |
+          echo "🔄 Aplicando migrações do banco de dados..."
 
-        # Instalar o Prisma CLI globalmente
-        echo "📦 Instalando Prisma CLI..."
-        npm install -g prisma
+          # Instalar o Prisma CLI globalmente
+          echo "📦 Instalando Prisma CLI..."
+          npm install -g prisma
 
-        # Configurar variáveis de ambiente para o Prisma
-        export DATABASE_URL="${{ secrets.DATABASE_URL_STAGE }}"
-        export JWT_SECRET="${{ secrets.JWT_SECRET_STAGE }}"
+          # Configurar variáveis de ambiente para o Prisma
+          export DATABASE_URL="${{ secrets.DATABASE_URL_STAGE }}"
+          export JWT_SECRET="${{ secrets.JWT_SECRET_STAGE }}"
 
-        # Verificar migrações pendentes
-        echo "🔍 Verificando migrações pendentes..."
-        npx prisma migrate status
+          # Verificar migrações pendentes
+          echo "🔍 Verificando migrações pendentes..."
+          npx prisma migrate status
 
-        # Aplicar migrações
-        echo "🚀 Aplicando migrações..."
-        npx prisma migrate deploy
+          # Aplicar migrações
+          echo "🚀 Aplicando migrações..."
+          npx prisma migrate deploy
 
-        # Verificar o status após a migração
-        echo "✅ Migrações aplicadas com sucesso!"
-        npx prisma migrate status
-      env:
-        DATABASE_URL: ${{ secrets.DATABASE_URL_STAGE }}
-        JWT_SECRET: ${{ secrets.JWT_SECRET_STAGE }}
+          # Verificar o status após a migração
+          echo "✅ Migrações aplicadas com sucesso!"
+          npx prisma migrate status
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGE }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET_STAGE }}
 
-    - name: Get service URL
-      if: steps.version_check.outputs.should_deploy == 'true'
-      run: |
-        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $GCP_REGION --format="value(status.url)")
-        VERSION="${{ steps.version_check.outputs.version }}"
-        echo "🚀 Backend deployed successfully!"
-        echo "📦 Version: $VERSION"
-        echo "🌐 URL: $SERVICE_URL"
-        echo "📚 API Docs: $SERVICE_URL/api"
+      - name: Get service URL
+        if: steps.version_check.outputs.should_deploy == 'true'
+        run: |
+          SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $GCP_REGION --format="value(status.url)")
+          VERSION="${{ steps.version_check.outputs.version }}"
+          echo "🚀 Backend deployed successfully!"
+          echo "📦 Version: $VERSION"
+          echo "🌐 URL: $SERVICE_URL"
+          echo "📚 API Docs: $SERVICE_URL/api"
 
-    - name: Skip deployment message
-      if: steps.version_check.outputs.should_deploy == 'false'
-      run: |
-        echo "⏭️ Deploy pulado - Tag não é válida para staging"
+      - name: Skip deployment message
+        if: steps.version_check.outputs.should_deploy == 'false'
+        run: |
+          echo "⏭️ Deploy pulado - Tag não é válida para staging"
