@@ -29,11 +29,16 @@ COPY . .
 ENV DATABASE_URL=$DATABASE_URL
 RUN npx prisma generate
 
-# Build da aplicação
-RUN pnpm run build && \
-    echo "📦 Verificando se dist/main.js foi gerado..." && \
-    ls -la dist/ && \
-    test -f dist/main.js || (echo "❌ dist/main.js não foi gerado!" && exit 1)
+# Debug - verificar arquivos e configs
+RUN echo "🔍 Verificando arquivos src..." && \
+    ls -la src/ && \
+    echo "📋 Configurações:" && \
+    cat nest-cli.json && \
+    echo "---" && \
+    cat tsconfig.build.json && \
+    echo "---" && \
+    echo "🚀 Tentando build com verbose..." && \
+    pnpm run build --verbose
 
 # Definir variáveis de ambiente padrão
 ENV NODE_ENV=production
