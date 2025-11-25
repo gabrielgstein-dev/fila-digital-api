@@ -32,11 +32,15 @@ RUN npx prisma generate
 # Debug - verificar arquivos e configs
 RUN echo "🔍 Verificando arquivos src..." && \
     ls -la src/ && \
+    echo "📄 Verificando entry point..." && \
+    ls -la src/main.ts && \
     echo "📋 Configurações:" && \
     cat nest-cli.json && \
     echo "---" && \
     cat tsconfig.build.json && \
     echo "---" && \
+    echo "🔍 O que TypeScript está compilando..." && \
+    npx tsc --listFiles --noEmit && \
     echo "🚀 Tentando build normal..." && \
     pnpm run build
 
