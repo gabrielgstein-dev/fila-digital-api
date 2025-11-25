@@ -96,7 +96,9 @@ jobs:
             exit 1
           fi
 
-          docker build --platform linux/amd64 --no-cache -f Dockerfile.qa -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+          docker build --platform linux/amd64 --no-cache -f Dockerfile.qa \
+                       --build-arg DATABASE_URL="${{ secrets.DATABASE_URL_STAGE }}" \
+                       -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
                        -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
                        -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
 
