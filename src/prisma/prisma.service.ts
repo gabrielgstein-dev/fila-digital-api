@@ -1,16 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import config from '../../prisma.config.js';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
   private readonly logger = new Logger(PrismaService.name);
-
-  constructor() {
-    super({
-      datasourceUrl: config.datasources.db.url,
-    });
-  }
 
   async onModuleInit() {
     this.logger.log(
