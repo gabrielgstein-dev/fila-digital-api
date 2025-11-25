@@ -1,3 +1,4 @@
+/** @type {import('prisma').PrismaConfig} */
 const config = {
   schemaPath: './prisma/schema.prisma',
   datasources: {
@@ -5,6 +6,6 @@ const config = {
       url: process.env.DATABASE_URL,
     },
   },
-};
+}
 
-export default config;
+module.exports = config;
