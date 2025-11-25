@@ -26,8 +26,28 @@ export class TenantsService {
           throw new ConflictException('Já existe um tenant com este email');
         }
       }
+      if (!createTenantDto.adminEmail) {
+        const tenant = await this.prisma.tenant.create({
+          data: {
+            name: createTenantDto.name,
+            slug: createTenantDto.slug,
+            email: createTenantDto.email,
+            phone: createTenantDto.phone,
+          },
+        });
 
-      // Verificar se o email do administrador já existe
+        return {
+          id: tenant.id,
+          name: tenant.name,
+          slug: tenant.slug,
+          email: tenant.email,
+          phone: tenant.phone,
+          isActive: tenant.isActive,
+          createdAt: tenant.createdAt,
+          updatedAt: tenant.updatedAt,
+        };
+      }
+
       const existingAdmin = await this.prisma.corporateUser.findUnique({
         where: { email: createTenantDto.adminEmail },
       });
@@ -49,7 +69,6 @@ export class TenantsService {
       // Hash da senha
       const hashedPassword = await bcrypt.hash(passwordToHash, 10);
 
-      // Extrair nome do email se não for informado
       const adminName =
         createTenantDto.adminName ||
         createTenantDto.adminEmail.split('@')[0].replace(/[._-]/g, ' ');

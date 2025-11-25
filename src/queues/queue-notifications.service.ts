@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { IgniterService } from '../rt/igniter.service';
 
 @Injectable()
 export class QueueNotificationsService {
@@ -8,7 +7,6 @@ export class QueueNotificationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly igniterService: IgniterService,
   ) {}
 
   /**
@@ -53,21 +51,8 @@ export class QueueNotificationsService {
         queue.avgServiceTime,
       );
 
-      // Notificar via Igniter sobre o ticket chamado
-      await this.igniterService.notifyQueueTicketChange(queueId, {
-        currentTicket: ticketData.myCallingToken,
-        ticketId: ticketData.ticketId,
-        callingNumber: ticketData.myCallingToken,
-        queueName: queue.name,
-        position: ticketData.position,
-        estimatedWait,
-      });
-
-      // Atualizar posições de todos os usuários na fila
-      await this.updateAllUserPositions(queueId);
-
       this.logger.log(
-        `🔔 Notificação de ticket chamado enviada - Fila: ${queue.name}, Ticket: ${ticketData.myCallingToken}`,
+        `🔔 Ticket chamado - Fila: ${queue.name}, Ticket: ${ticketData.myCallingToken}`,
       );
     } catch (error) {
       this.logger.error(
@@ -112,13 +97,6 @@ export class QueueNotificationsService {
         queueLength,
         queue.avgServiceTime,
       );
-
-      await this.igniterService.notifyQueueStatusChange(queueId, {
-        status,
-        queueLength,
-        avgWaitTime,
-        message: message || this.getStatusMessage(status),
-      });
 
       this.logger.log(
         `📊 Status da fila ${queue.name} alterado para: ${status}`,
@@ -167,15 +145,8 @@ export class QueueNotificationsService {
         userTicket.queue.avgServiceTime,
       );
 
-      await this.igniterService.notifyUserQueuePosition(userId, queueId, {
-        position,
-        estimatedWait,
-        peopleAhead,
-        ticketNumber: userTicket.myCallingToken || 'N/A',
-      });
-
       this.logger.debug(
-        `📍 Posição atualizada para usuário ${userId} na fila ${queueId}: ${position}`,
+        `📍 Posição do usuário ${userId} na fila ${queueId}: ${position}`,
       );
     } catch (error) {
       this.logger.error(

@@ -1,0 +1,4 @@
+ALTER TABLE "tickets" ADD COLUMN
+IF NOT EXISTS "guestToken" TEXT;
+ALTER TABLE "tickets" ADD COLUMN
+IF NOT EXISTS "myCallingToken" TEXT;

@@ -14,7 +14,6 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { IgniterService } from '../rt/igniter.service';
 
 // DTOs para validação
 export class UpdateMetricsDto {
@@ -32,62 +31,7 @@ export class ChartDataQueryDto {
 @ApiTags('Dashboard')
 @Controller('dashboard')
 export class DashboardController {
-  constructor(private readonly igniterService: IgniterService) {}
-
-  @Get('public-metrics')
-  @ApiOperation({
-    summary: 'Obter métricas públicas',
-    description:
-      'Retorna métricas públicas do sistema que podem ser exibidas sem autenticação. Use este endpoint para exibir estatísticas gerais do sistema em landing pages, páginas públicas ou para monitoramento externo.',
-  })
-  @ApiResponse({
-    status: 200,
-    description:
-      'Métricas públicas retornadas com sucesso. Retorna objeto com estatísticas gerais do sistema.',
-    schema: {
-      type: 'object',
-      example: {
-        totalTenants: 150,
-        totalQueues: 500,
-        totalTicketsToday: 5000,
-        activeQueues: 320,
-        timestamp: '2024-01-15T16:00:00.000Z',
-      },
-    },
-  })
-  async getPublicMetrics() {
-    return this.igniterService.getPublicMetrics();
-  }
-
-  @Get('private-metrics')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Obter métricas privadas (autenticado)',
-    description:
-      'Retorna métricas privadas do usuário autenticado, incluindo dados do seu tenant e usuário. Use este endpoint para dashboards pessoais e visualizações de dados específicos do usuário autenticado.',
-  })
-  @ApiResponse({
-    status: 200,
-    description:
-      'Métricas privadas retornadas com sucesso. Retorna métricas específicas do usuário e tenant autenticado.',
-    schema: {
-      type: 'object',
-      example: {
-        userId: '123e4567-e89b-12d3-a456-426614174000',
-        tenantId: '123e4567-e89b-12d3-a456-426614174001',
-        metrics: {
-          totalQueues: 10,
-          activeTickets: 25,
-          completedToday: 150,
-        },
-      },
-    },
-  })
-  async getPrivateMetrics(@Request() req: any) {
-    const { userId, tenantId } = req.user;
-    return this.igniterService.getDashboardMetrics(userId, tenantId);
-  }
+  constructor() {}
 
   @Get('admin-metrics')
   @UseGuards(JwtAuthGuard)
@@ -221,27 +165,6 @@ export class DashboardController {
     };
   }
 
-  @Get('chart-data')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Obter dados para gráficos' })
-  async getChartData(@Query() query: ChartDataQueryDto, @Request() req: any) {
-    const { type = 'users', period = 'day', tenantId } = query;
-    const targetTenantId = tenantId || req.user.tenantId;
-
-    const chartData = await this.igniterService.generateChartData(type, period);
-
-    return {
-      tenantId: targetTenantId,
-      chartData,
-      metadata: {
-        generatedAt: new Date().toISOString(),
-        requestedBy: req.user.userId,
-        period,
-        type,
-      },
-    };
-  }
 
   @Get('connection-status')
   @UseGuards(JwtAuthGuard)
@@ -260,147 +183,13 @@ export class DashboardController {
     };
   }
 
-  // ==================== ENDPOINTS DE GERENCIAMENTO DE SESSÃO ====================
-
-  @Get('session-info')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Informações completas da sessão e token' })
-  async getSessionInfo(@Request() req: any) {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      throw new Error('Token não fornecido');
-    }
-
-    const sessionInfo = await this.igniterService.getSessionInfo(token);
-
-    return {
-      ...sessionInfo,
-      // Adicionar informações extras para o frontend
-      warnings: {
-        tokenExpiring: sessionInfo.tokenInfo.shouldRefresh,
-        timeRemaining: sessionInfo.tokenInfo.timeToExpire,
-      },
-    };
-  }
-
-  @Post('refresh-token')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Renovar token de acesso' })
-  async refreshToken(@Request() req: any) {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      throw new Error('Token não fornecido');
-    }
-
-    // Verificar se o token deve ser renovado
-    const shouldRefresh = await this.igniterService.shouldRefreshToken(token);
-
-    if (!shouldRefresh) {
-      return {
-        message: 'Token ainda não precisa ser renovado',
-        current_token_info: await this.igniterService.analyzeToken(token),
-      };
-    }
-
-    const newTokenData = await this.igniterService.refreshToken(token);
-
-    return {
-      message: 'Token renovado com sucesso',
-      ...newTokenData,
-      refreshed_at: new Date().toISOString(),
-    };
-  }
-
-  @Get('token-status')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Status do token atual' })
-  async getTokenStatus(@Request() req: any) {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      throw new Error('Token não fornecido');
-    }
-
-    const tokenInfo = await this.igniterService.analyzeToken(token);
-
-    return {
-      status: tokenInfo.shouldRefresh ? 'expiring_soon' : 'valid',
-      ...tokenInfo,
-      recommendations: {
-        should_refresh: tokenInfo.shouldRefresh,
-        action: tokenInfo.shouldRefresh
-          ? 'Renovar token em breve'
-          : 'Token válido, nenhuma ação necessária',
-      },
-    };
-  }
-
-  // ==================== ENDPOINTS DE MONITORAMENTO E PERFORMANCE ====================
-
-  @Get('performance-metrics')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Métricas de performance do sistema' })
-  async getPerformanceMetrics(@Request() req: any) {
-    // Verificar se é admin
-    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-      throw new Error('Acesso negado - apenas administradores');
-    }
-
-    return {
-      ...this.igniterService.getPerformanceMetrics(),
-      timestamp: new Date().toISOString(),
-      system: {
-        nodeVersion: process.version,
-        platform: process.platform,
-        uptime: process.uptime(),
-        memoryUsage: process.memoryUsage(),
-      },
-    };
-  }
-
-  @Post('clear-cache')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Limpar cache do sistema' })
-  async clearCache(@Request() req: any, @Body() body?: { pattern?: string }) {
-    // Verificar se é admin
-    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-      throw new Error('Acesso negado - apenas administradores');
-    }
-
-    const clearedCount = this.igniterService.clearCache(body?.pattern);
-
-    return {
-      success: true,
-      message: `Cache limpo com sucesso`,
-      clearedEntries: clearedCount,
-      pattern: body?.pattern || 'all',
-      clearedBy: req.user.userId,
-      timestamp: new Date().toISOString(),
-    };
-  }
-
   @Get('system-health')
   @ApiOperation({ summary: 'Health check completo do sistema' })
   async getSystemHealth() {
-    const performanceMetrics = this.igniterService.getPerformanceMetrics();
-
     return {
       status: 'healthy',
       timestamp: new Date().toISOString(),
       version: '1.0.0',
-      performance: {
-        cacheHitRate: performanceMetrics.hitRate,
-        avgResponseTime: performanceMetrics.avgResponseTime,
-        requestCount: performanceMetrics.requestCount,
-        cacheSize: performanceMetrics.cacheSize,
-      },
       system: {
         uptime: process.uptime(),
         memory: {
@@ -410,9 +199,7 @@ export class DashboardController {
         node: process.version,
       },
       services: {
-        database: 'connected', // TODO: implementar check real
-        cache: 'active',
-        igniter: 'running',
+        database: 'connected',
       },
     };
   }

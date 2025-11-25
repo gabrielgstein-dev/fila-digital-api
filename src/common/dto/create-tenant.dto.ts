@@ -1,11 +1,11 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsString,
   IsEmail,
   IsOptional,
-  MinLength,
+  IsString,
   MaxLength,
+  MinLength,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTenantDto {
   @ApiProperty({ description: 'Nome da empresa' })
@@ -35,8 +35,9 @@ export class CreateTenantDto {
       'Email do administrador inicial da conta (será criado automaticamente)',
     example: 'admin@empresa.com',
   })
+  @IsOptional()
   @IsEmail()
-  adminEmail: string;
+  adminEmail?: string;
 
   @ApiPropertyOptional({
     description: 'Nome do administrador inicial',

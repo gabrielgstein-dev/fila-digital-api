@@ -73,7 +73,7 @@ VALUES
     '00000000002',
     '$2b$10$HJHSJ6cX4.3fjj4Rl4G/GObsDwh8vADa.7.5jV0GlXWWSXXXYbhiG',
     'Atendente Padrão',
-    'OPERADOR',
+    'ATTENDANT',
     true,
     true,
     true,
@@ -81,4 +81,3 @@ VALUES
     NOW(),
     NOW()
   );
-

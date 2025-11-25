@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  postgres-e2e:
+    image: postgres:15
+    container_name: fila-postgres-e2e
+    environment:
+      POSTGRES_DB: fila_e2e
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d fila_e2e']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_e2e_data:/var/lib/postgresql/data
+
+  api-tests:
+    image: node:22-slim
+    container_name: fila-api-e2e-tests
+    working_dir: /app
+    depends_on:
+      postgres-e2e:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres-e2e:5432/fila_e2e?schema=public
+      NODE_ENV: test
+      PORT: 3001
+      JWT_SECRET: test-secret-key
+      CORS_ORIGIN: http://localhost:3000
+      WEBSOCKET_CORS_ORIGIN: http://localhost:3000
+      CI: 'true'
+    volumes:
+      - ./:/app
+    command: >-
+      sh -c "npm install -g pnpm && pnpm install --frozen-lockfile=false && npx prisma generate && npx prisma migrate deploy && pnpm test:e2e"
+
+volumes:
+  postgres_e2e_data:

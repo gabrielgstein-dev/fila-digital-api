@@ -688,7 +688,7 @@ export class TicketsService {
       userId: string | null;
       status: TicketStatus;
     },
-    maxRetries = 5,
+    maxRetries = 3,
   ) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -747,9 +747,9 @@ export class TicketsService {
           );
 
         if (isUniqueConstraintError && attempt < maxRetries) {
-          const delay = Math.min(50 * attempt, 200);
+          const delay = Math.min(100 * attempt, 300);
           this.logger.warn(
-            `Conflito de unicidade detectado no token (tentativa ${attempt}/${maxRetries}). Aguardando ${delay}ms antes de tentar novamente...`,
+            `Conflito de token detectado (race condition). Tentativa ${attempt}/${maxRetries}. Aguardando ${delay}ms...`,
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;

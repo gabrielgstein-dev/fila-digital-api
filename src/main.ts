@@ -4,80 +4,8 @@ import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
-import { type RequestHandler } from 'express';
 import helmet from 'helmet';
-import { Readable } from 'node:stream';
 import { AppModule } from './app.module';
-
-// === IMPORTANTE: seu router do Igniter ===
-import { AppRouter } from './rt/igniter.router';
-import { TicketRealtimeOptimizedController } from './rt/ticket-realtime-optimized.controller';
-
-/**
- * Adaptador mínimo para Express:
- * - Constrói um Web Request com headers e body do req Express
- * - Invoca AppRouter.handler(Request)
- * - Transmite o corpo da resposta (inclui SSE)
- */
-function createIgniterExpressAdapter(
-  handler: (req: Request) => Promise<Response>,
-): RequestHandler {
-  return async (req, res) => {
-    try {
-      const origin = `${req.protocol}://${req.get('host')}`;
-      const url = origin + req.originalUrl;
-
-      // Copia headers do Express para Headers Web
-      const headers = new Headers();
-      for (const [k, v] of Object.entries(req.headers)) {
-        if (Array.isArray(v)) {
-          v.forEach((val) => headers.append(k, val));
-        } else if (v != null) {
-          headers.set(k, String(v));
-        }
-      }
-
-      // Para métodos com corpo, passamos o stream do req
-      const hasBody = !['GET', 'HEAD'].includes(req.method);
-      const webReq = new Request(url, {
-        method: req.method,
-        headers,
-        body: hasBody ? (req as any) : undefined,
-        // Node 18+ requer duplex quando body é Readable
-        ...(hasBody ? { duplex: 'half' as any } : {}),
-      });
-
-      const webRes = await handler(webReq);
-
-      // Status e headers
-      res.status(webRes.status);
-      webRes.headers.forEach((value, key) => res.setHeader(key, value));
-
-      // Corpo (inclui SSE)
-      if (webRes.body) {
-        // Converte WHATWG ReadableStream -> Node Readable e faz pipe
-        const nodeReadable = Readable.fromWeb(webRes.body as any);
-        // Para SSE é bom flush imediato dos headers
-        if (
-          (webRes.headers.get('content-type') || '').includes(
-            'text/event-stream',
-          )
-        ) {
-          (res as any).flushHeaders?.();
-        }
-        nodeReadable.pipe(res);
-      } else {
-        // Sem body: envia buffer (casos raros)
-        const buf = Buffer.from(await webRes.arrayBuffer());
-        res.send(buf);
-      }
-    } catch (err) {
-      // Fallback de erro
-      console.error('[IgniterAdapter] error:', err);
-      res.status(500).json({ error: 'Internal Server Error' });
-    }
-  };
-}
 
 async function bootstrap() {
   console.log('🚀 [STEP 1] Iniciando aplicação...');
@@ -202,16 +130,6 @@ async function bootstrap() {
   SwaggerModule.setup('api', app, document);
   console.log('✅ [STEP 8] Swagger configurado!');
 
-  // === AQUI: monte o Igniter sob /api/rt ===
-  console.log('⚡ [IGNITER] Configurando TicketController...');
-  const ticketController = app.get(TicketRealtimeOptimizedController);
-  AppRouter.setTicketController(ticketController);
-  console.log('✅ [IGNITER] TicketController configurado!');
-
-  const igniterHandler = createIgniterExpressAdapter(AppRouter.handler);
-  // Monte DEPOIS de configurar helmet/CORS para herdar os middlewares
-  app.getHttpAdapter().getInstance().use('/api/rt', igniterHandler);
-  console.log('⚡ [IGNITER] Montado em /api/rt');
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3001;
   console.log(`🚀 [STEP 9] Tentando iniciar servidor na porta: ${port}`);
@@ -236,7 +154,6 @@ async function bootstrap() {
   console.log('🎉 [SUCCESS] Servidor iniciado com sucesso!');
   console.log(`🌍 [SUCCESS] API Nest em http://0.0.0.0:${port}/api/v1`);
   console.log(`📖 [SUCCESS] Swagger em http://0.0.0.0:${port}/api`);
-  console.log(`⚡ [SUCCESS] Igniter em http://0.0.0.0:${port}/api/rt`);
   console.log(`❤️ [SUCCESS] Health em http://0.0.0.0:${port}/api/v1/health`);
 
   app.enableShutdownHooks();

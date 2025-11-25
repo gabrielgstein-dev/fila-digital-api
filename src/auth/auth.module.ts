@@ -11,7 +11,6 @@ import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { TenantAuthGuard } from './guards/tenant-auth.guard';
 import { AuthThrottleGuard } from './guards/auth-throttle.guard';
-import { IgniterModule } from '../rt/igniter.module';
 
 @Module({})
 export class AuthModule {
@@ -29,7 +28,6 @@ export class AuthModule {
           }),
           inject: [ConfigService],
         }),
-        IgniterModule,
       ],
       controllers: [AuthController, TicketChangeController],
       providers: [

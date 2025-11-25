@@ -5,30 +5,33 @@ module.exports = {
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
-  collectCoverageFrom: ['**/*.(t|j)s'],
-  coverageDirectory: '../coverage',
+  collectCoverageFrom: [
+    'src/**/*.(t|j)s',
+    '!src/main.ts',
+    '!src/app.module.ts',
+  ],
+  coverageDirectory: './coverage',
+  coverageReporters: ['text', 'lcov'],
   testEnvironment: 'node',
   maxWorkers: '50%',
   testTimeout: 10000,
   setupFilesAfterEnv: ['<rootDir>/test/jest-unit-setup.ts'],
-  verbose: false,
-  silent: true,
-  noStackTrace: true,
-  detectOpenHandles: false,
+  verbose: true,
+  silent: false,
+  detectOpenHandles: true,
   forceExit: true,
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^src/(.*)$': '<rootDir>/src/$1',
   },
   testPathIgnorePatterns: [
     '<rootDir>/node_modules/',
     '<rootDir>/dist/',
-    '<rootDir>/test/',
+    '<rootDir>/test/e2e/',
   ],
-  coveragePathIgnorePatterns: [
-    '<rootDir>/node_modules/',
-    '<rootDir>/dist/',
-    '<rootDir>/test/',
-    '<rootDir>/src/main.ts',
-    '<rootDir>/src/app.module.ts',
-  ],
+  coveragePathIgnorePatterns: ['/node_modules/'],
+  globals: {
+    'ts-jest': {
+      isolatedModules: true,
+    },
+  },
 };
