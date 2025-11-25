@@ -113,56 +113,42 @@ jobs:
       run: |
         echo "🚀 Fazendo deploy forçado com nova imagem..."
         VERSION="${{ steps.version_check.outputs.version }}"
-        CLEAN_TAG=$(echo "v${VERSION}" | sed 's/-stage$//' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/-$//')
+        gcloud run services update $SERVICE_NAME \
+          --image=gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+          --region=$GCP_REGION \
+          --project=$GCP_PROJECT_ID \
+          --platform=managed \
+          --force-update-tags \
+          --update-env-vars="VERSION=$VERSION" \
+          --quiet
 
-        echo "Tag limpa: ${CLEAN_TAG}"
+    - name: Run Prisma Migrations
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        echo "🔄 Aplicando migrações do banco de dados..."
 
-        # ---------------------------------------------------------------------
-        # TÉCNICA DO DELIMITADOR PERSONALIZADO (^;;^)
-        # Mantendo esta técnica pois ela resolveu o erro anterior de "Bad syntax"
-        # ---------------------------------------------------------------------
+        # Instalar o Prisma CLI globalmente
+        echo "📦 Instalando Prisma CLI..."
+        npm install -g prisma
 
-        ENV_VARS="^;;^NODE_ENV=${{ secrets.NODE_ENV_STAGE }}"
-        ENV_VARS+=";;CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com,https://app-stage.agilizafilas.com"
-        ENV_VARS+=";;DATABASE_PROVIDER=render"
-        ENV_VARS+=";;DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}"
-        ENV_VARS+=";;JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}"
-        ENV_VARS+=";;JWT_EXPIRES_IN=7d"
-        ENV_VARS+=";;META_API_VERSION=${{ secrets.META_API_VERSION_STAGE }}"
-        ENV_VARS+=";;META_PHONE_NUMBER_ID=${{ secrets.META_PHONE_NUMBER_ID_STAGE }}"
-        ENV_VARS+=";;META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN_STAGE }}"
-        ENV_VARS+=";;WHATSAPP_MIN_DELAY_MS=${{ secrets.WHATSAPP_MIN_DELAY_MS_STAGE }}"
-        ENV_VARS+=";;FRONTEND_URL=${{ secrets.FRONTEND_URL_STAGE }}"
+        # Configurar variáveis de ambiente para o Prisma
+        export DATABASE_URL="${{ secrets.DATABASE_URL_STAGE }}"
+        export JWT_SECRET="${{ secrets.JWT_SECRET_STAGE }}"
 
-        echo "🚀 Iniciando deploy..."
+        # Verificar migrações pendentes
+        echo "🔍 Verificando migrações pendentes..."
+        npx prisma migrate status
 
-        # REMOVIDO: --startup-timeout 300 (Causava erro de unrecognized arguments)
+        # Aplicar migrações
+        echo "🚀 Aplicando migrações..."
+        npx prisma migrate deploy
 
-        gcloud run deploy "$SERVICE_NAME" \
-          --image "gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA" \
-          --region "$GCP_REGION" \
-          --platform managed \
-          --allow-unauthenticated \
-          --port 8080 \
-          --memory 2Gi \
-          --cpu 2 \
-          --min-instances 0 \
-          --max-instances 10 \
-          --timeout 3600 \
-          --execution-environment gen2 \
-          --cpu-boost \
-          --no-traffic \
-          --tag "${CLEAN_TAG}" \
-          --project "$GCP_PROJECT_ID" \
-          --set-env-vars "$ENV_VARS"
-
-        echo "📊 Aguardando deploy estabilizar..."
-        sleep 10
-
-        echo "🔄 Direcionando 100% do tráfego para nova versão..."
-        gcloud run services update-traffic "$SERVICE_NAME" \
-          --to-latest \
-          --region "$GCP_REGION"
+        # Verificar o status após a migração
+        echo "✅ Migrações aplicadas com sucesso!"
+        npx prisma migrate status
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL_STAGE }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET_STAGE }}
 
     - name: Get service URL
       if: steps.version_check.outputs.should_deploy == 'true'

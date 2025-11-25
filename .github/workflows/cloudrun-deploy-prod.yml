@@ -83,6 +83,7 @@ jobs:
     - name: Deploy to Cloud Run
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
+        echo "🚀 Iniciando deploy para produção..."
         gcloud run deploy $SERVICE_NAME \
           --image gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
           --region $GCP_REGION \
@@ -106,6 +107,34 @@ jobs:
           --set-env-vars META_PHONE_NUMBER_ID=${{ secrets.META_PHONE_NUMBER_ID_PROD }} \
           --set-env-vars META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN_PROD }} \
           --set-env-vars FRONTEND_URL=${{ secrets.FRONTEND_URL_PROD }}
+
+    - name: Run Prisma Migrations (Production)
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        echo "🔒 Iniciando migrações do banco de dados em produção..."
+
+        # Instalar o Prisma CLI globalmente
+        echo "📦 Instalando Prisma CLI..."
+        npm install -g prisma
+
+        # Configurar variáveis de ambiente para o Prisma
+        export DATABASE_URL="${{ secrets.DATABASE_URL_PROD }}"
+        export JWT_SECRET="${{ secrets.JWT_SECRET_PROD }}"
+
+        # Verificar migrações pendentes (apenas para log)
+        echo "🔍 Verificando migrações pendentes..."
+        npx prisma migrate status || echo "⚠️ Não foi possível verificar o status das migrações (isso é normal na primeira execução)"
+
+        # Aplicar migrações (modo seguro para produção)
+        echo "🚀 Aplicando migrações em produção..."
+        npx prisma migrate deploy --schema=./prisma/schema.prisma
+
+        # Verificar o status após a migração
+        echo "✅ Migrações aplicadas com sucesso em produção!"
+        npx prisma migrate status || true
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET_PROD }}
 
     - name: Get service URL
       if: steps.version_check.outputs.should_deploy == 'true'
