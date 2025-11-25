@@ -4,14 +4,7 @@ FROM node:22-slim
 # Build argument para DATABASE_URL
 ARG DATABASE_URL
 
-# Instalar dependências do sistema
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    curl \
-    dumb-init \
-    openssl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Usar apenas dependências já incluídas na imagem Node
 
 # Definir diretório de trabalho
 WORKDIR /app
@@ -49,10 +42,5 @@ ENV PORT=8080
 # Expor porta 8080
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/v1/health || exit 1
-
-# Comando para iniciar a aplicação usando dumb-init
-ENTRYPOINT ["dumb-init", "--"]
+# Iniciar aplicação diretamente
 CMD ["node", "dist/main.js"]
