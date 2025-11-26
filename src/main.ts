@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import * as express from 'express';
+import express from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -113,7 +113,8 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   console.log('📚 [STEP 8] Configurando Swagger...');
-  const packageJson = require('../package.json');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const packageJson = require('../../package.json');
   const version = packageJson.version;
   const buildTime = new Date().toISOString();
 
@@ -129,7 +130,6 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
   console.log('✅ [STEP 8] Swagger configurado!');
-
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3001;
   console.log(`🚀 [STEP 9] Tentando iniciar servidor na porta: ${port}`);
