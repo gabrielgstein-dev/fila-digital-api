@@ -113,17 +113,33 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   console.log('📚 [STEP 8] Configurando Swagger...');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const packageJson = require('../../package.json');
-  const version = packageJson.version;
+
+  // Lê o package.json a partir do diretório de trabalho (/app no Docker)
+  let appVersion = 'dev';
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require('path');
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+    );
+    appVersion = pkg.version ?? 'dev';
+  } catch {
+    // Em produção, se der ruim, só loga e segue com uma versão default
+    console.warn('Não foi possível carregar package.json, usando versão "dev"');
+    appVersion = 'dev';
+  }
+
   const buildTime = new Date().toISOString();
 
   const config = new DocumentBuilder()
     .setTitle('Fila Digital API')
     .setDescription(
-      `API para sistema de fila digital\n\n**Versão:** ${version}\n**Ambiente:** ${nodeEnv}\n**Build:** ${buildTime}`,
+      `API para sistema de fila digital\n\n**Versão:** ${appVersion}\n**Ambiente:** ${nodeEnv}\n**Build:** ${buildTime}`,
     )
-    .setVersion(version)
+    .setVersion(appVersion)
     .addBearerAuth()
     .build();
 
