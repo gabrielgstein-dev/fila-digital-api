@@ -1,55 +1,85 @@
-# Dockerfile simplificado para Cloud Run
-FROM node:22-slim
+# Dockerfile otimizado para Cloud Run com multi-stage build
+# ================================================
 
-# Build argument para DATABASE_URL
-ARG DATABASE_URL
+# Stage 1: Builder - Instala dependências e faz o build
+FROM node:22-slim AS builder
 
-# Usar apenas dependências já incluídas na imagem Node
+# Instalar dependências do sistema necessárias para o build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    openssl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Definir diretório de trabalho
 WORKDIR /app
 
-# Instalar pnpm
+# Instalar pnpm globalmente
 RUN npm install -g pnpm
 
-# Copiar arquivos de configuração
+# Copiar apenas arquivos de configuração para cache eficiente
 COPY package.json pnpm-lock.yaml ./
 
-# Instalar dependências (incluindo devDependencies para o build)
-# Usar --shamefully-hoist para garantir layout compatível com Node.js padrão
-# Isso coloca todas as dependências em node_modules/ diretamente, sem symlinks complexos
-RUN pnpm config set shamefully-hoist true && \
-    pnpm install --frozen-lockfile
+# Instalar dependências com pnpm (reprodutível e rápido)
+RUN pnpm install --frozen-lockfile
 
-# Copiar código fonte
-# O .dockerignore já exclui node_modules/, então os node_modules instalados acima são preservados
+# Copiar o resto do código fonte
 COPY . .
 
-# Gerar Prisma Client com DATABASE_URL disponível
-ENV DATABASE_URL=$DATABASE_URL
-RUN npx prisma generate
+# Validar schema do Prisma
+RUN if [ ! -f "prisma/schema.prisma" ]; then \
+        echo "❌ Schema Prisma não encontrado"; \
+        exit 1; \
+    fi && \
+    npx prisma validate
 
-# Debug - verificar arquivos e configs
-RUN echo "🔍 Verificando arquivos src..." && \
-    ls -la src/ && \
-    echo "📄 Verificando entry point..." && \
-    ls -la src/main.ts && \
-    echo "📋 Configurações:" && \
-    cat nest-cli.json && \
-    echo "---" && \
-    cat tsconfig.build.json && \
-    echo "---" && \
-    echo "🔍 O que TypeScript está compilando..." && \
-    npx tsc --listFiles --noEmit && \
-    echo "🚀 Tentando build normal..." && \
-    pnpm run build
+# Gerar Prisma Client (sem depender de DATABASE_URL específica)
+RUN echo "🔧 Gerando Prisma Client..." && \
+    npx prisma --version && \
+    npx prisma generate && \
+    echo "✅ Prisma Client gerado com sucesso"
 
-# Definir variáveis de ambiente padrão
-ENV NODE_ENV=production
-ENV PORT=8080
+# Build da aplicação NestJS
+RUN echo "🏗️ Buildando aplicação NestJS..." && \
+    pnpm run build && \
+    echo "✅ Build concluído com sucesso"
 
-# Expor porta 8080
+# Remover dependências de desenvolvimento para otimizar runtime
+RUN pnpm prune --prod
+
+# Stage 2: Runtime - Imagem final otimizada para Cloud Run
+FROM node:22-slim
+
+# Instalar apenas dependências essenciais para runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Criar usuário não-root para segurança
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nestjs
+
+# Definir diretório de trabalho
+WORKDIR /app
+
+# Copiar apenas o necessário do estágio builder
+COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nestjs:nodejs /app/package.json ./
+COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nestjs:nodejs /app/prisma ./prisma
+
+# Definir variáveis de ambiente para Cloud Run
+ENV NODE_ENV=production \
+    PORT=8080
+
+# Expor porta padrão do Cloud Run
 EXPOSE 8080
 
-# Iniciar aplicação diretamente
-CMD ["node", "dist/main.js"]
+# Mudar para usuário não-root
+USER nestjs
+
+# Comando de inicialização
+CMD ["node", "dist/src/main.js"]

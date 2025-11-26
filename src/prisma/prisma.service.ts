@@ -5,6 +5,10 @@ import { PrismaClient } from '@prisma/client';
 export class PrismaService extends PrismaClient implements OnModuleInit {
   private readonly logger = new Logger(PrismaService.name);
 
+  constructor() {
+    super();
+  }
+
   async onModuleInit() {
     this.logger.log(
       '🔄 Tentando conectar ao banco de dados (não bloqueante)...',
