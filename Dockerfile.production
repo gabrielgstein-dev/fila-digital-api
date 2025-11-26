@@ -42,10 +42,11 @@ RUN npm install -g pnpm
 # Definir diretório de trabalho
 WORKDIR /app
 
-# Copiar dependências e código buildado
+# Copiar dependências, código buildado e schema Prisma
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/package*.json ./
+COPY --from=builder --chown=nestjs:nodejs /app/prisma ./prisma
 
 # Expor porta (Cloud Run usa 8080 por padrão)
 EXPOSE 8080

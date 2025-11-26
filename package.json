@@ -66,6 +66,7 @@
     "@nestjs/swagger": "^7.0.0",
     "@nestjs/throttler": "^5.0.0",
     "@nestjs/websockets": "^10.0.0",
+    "@prisma/adapter-pg": "^7.0.1",
     "@prisma/client": "^7.0.1",
     "@types/amqplib": "^0.10.7",
     "@types/passport-google-oauth20": "^2.0.16",
