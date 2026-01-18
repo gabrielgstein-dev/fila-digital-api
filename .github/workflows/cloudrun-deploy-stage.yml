@@ -120,7 +120,9 @@ jobs:
             --region=$GCP_REGION \
             --project=$GCP_PROJECT_ID \
             --platform=managed \
-            --update-env-vars="VERSION=$VERSION" \
+            --update-env-vars="VERSION=$VERSION,NODE_ENV=production,PORT=8080,JWT_EXPIRES_IN=7d" \
+            --set-env-vars="DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }}" \
+            --set-env-vars="JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}" \
             --quiet
 
       - name: Run Prisma Migrations
