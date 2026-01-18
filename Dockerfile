@@ -1,5 +1,5 @@
 # Dockerfile para produção - Cloud Run
-FROM node:22-slim AS base
+FROM node:24-slim AS base
 
 # Instalar dependências do sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -40,7 +40,7 @@ RUN pnpm run build
 RUN pnpm prune --prod
 
 # Stage final - runtime
-FROM node:22-slim AS runtime
+FROM node:24-slim AS runtime
 
 # Instalar dependências do sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -82,4 +82,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # Comando para iniciar a aplicação
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "dist/main.js"] 
+CMD ["node", "dist/src/main.js"]

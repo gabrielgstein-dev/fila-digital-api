@@ -1,5 +1,9 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
@@ -17,7 +21,9 @@
   "detectOpenHandles": true,
   "forceExit": true,
   "testTimeout": 60000,
-  "setupFilesAfterEnv": ["<rootDir>/test-setup.ts"],
+  "setupFilesAfterEnv": [
+    "<rootDir>/test-setup.ts"
+  ],
   "globalTeardown": "<rootDir>/global-teardown.ts",
   "testSequencer": "<rootDir>/test-sequencer.js",
   "verbose": true,
@@ -29,10 +35,7 @@
   "clearMocks": true,
   "resetMocks": true,
   "restoreMocks": true,
-  "globals": {
-    "ts-jest": {
-      "isolatedModules": true
-    }
-  },
-  "setupFiles": ["<rootDir>/crypto-polyfill.js"]
+  "setupFiles": [
+    "<rootDir>/crypto-polyfill.js"
+  ]
 }

@@ -1,25 +1,24 @@
 import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Post,
-  Put,
-  UseGuards,
+    Body,
+    Controller,
+    Delete,
+    Get,
+    Param,
+    Post,
+    Put,
+    UseGuards,
 } from '@nestjs/common';
 import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiOperation,
-  ApiParam,
-  ApiResponse,
-  ApiTags,
+    ApiBearerAuth,
+    ApiBody,
+    ApiOperation,
+    ApiParam,
+    ApiResponse,
+    ApiTags,
 } from '@nestjs/swagger';
 import { RequireTenant } from '../auth/decorators/require-tenant.decorator';
 import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
 import { CreateQueueDto } from '../common/dto/create-queue.dto';
-import { TicketCleanupService } from '../tickets/ticket-cleanup.service';
 import { QueuesService } from './queues.service';
 
 @ApiTags('queues')
@@ -27,7 +26,6 @@ import { QueuesService } from './queues.service';
 export class QueuesController {
   constructor(
     private readonly queuesService: QueuesService,
-    private readonly ticketCleanupService: TicketCleanupService,
   ) {}
 
   @Post('tenants/:tenantId/queues')
@@ -540,71 +538,6 @@ export class QueuesController {
 
   // Endpoint de limpeza removido - expiração de tickets desabilitada
   // @Post('tenants/:tenantId/queues/:queueId/cleanup')
-
-  @Get('tenants/:tenantId/queues/:queueId/abandonment-stats')
-  @UseGuards(TenantAuthGuard)
-  @RequireTenant()
-  @ApiBearerAuth()
-  @ApiParam({
-    name: 'tenantId',
-    description: 'ID do tenant',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  })
-  @ApiParam({
-    name: 'queueId',
-    description: 'ID da fila',
-    example: '123e4567-e89b-12d3-a456-426614174010',
-  })
-  @ApiOperation({
-    summary: 'Estatísticas de abandono da fila',
-    description:
-      'Retorna estatísticas de tickets abandonados (cliente não compareceu quando chamado) nos últimos dias. Use este endpoint para analisar a taxa de abandono da fila e entender quantos clientes não comparecem quando são chamados. Útil para ajustes operacionais e melhorias no atendimento.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Estatísticas de abandono retornadas com sucesso.',
-    schema: {
-      type: 'object',
-      example: {
-        totalTickets: 150,
-        noShowTickets: 15,
-        abandonmentRate: 10.0,
-        period: 'Últimos 7 dias',
-        queueId: '123e4567-e89b-12d3-a456-426614174010',
-        queueName: 'Atendimento Geral',
-      },
-    },
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Acesso negado - usuário não pertence a este tenant.',
-    schema: {
-      type: 'object',
-      example: {
-        statusCode: 403,
-        message: 'Acesso negado',
-        error: 'Forbidden',
-      },
-    },
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Fila não encontrada.',
-    schema: {
-      type: 'object',
-      example: {
-        statusCode: 404,
-        message: 'Fila não encontrada',
-        error: 'Not Found',
-      },
-    },
-  })
-  async getAbandonmentStats(
-    @Param('tenantId') tenantId: string,
-    @Param('queueId') queueId: string,
-  ) {
-    return this.ticketCleanupService.getAbandonmentStats(queueId);
-  }
 
   @Get('tenants/:tenantId/queues/:queueId/stats')
   @UseGuards(TenantAuthGuard)

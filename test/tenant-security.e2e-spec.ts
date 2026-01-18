@@ -1,4 +1,4 @@
-import * as request from 'supertest';
+const request = require('supertest');
 import { TestHelper } from './test-setup';
 
 // Função para gerar CPF válido

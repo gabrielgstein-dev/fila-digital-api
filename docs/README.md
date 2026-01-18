@@ -22,7 +22,7 @@ Sistema moderno de gerenciamento de filas digitais para empresas. Permite que cl
 - ✅ Painel TV para exibição pública
 
 ### ⚡ **Recursos Técnicos**
-- ✅ **Tempo Real**: WebSocket para atualizações instantâneas
+- ✅ **Tempo Real**: Server-Sent Events para atualizações instantâneas
 - ✅ **Multi-tenant**: Suporte a múltiplas empresas
 - ✅ **Escalável**: Arquitetura otimizada
 - ✅ **Seguro**: Autenticação JWT + rate limiting
@@ -34,7 +34,7 @@ Sistema moderno de gerenciamento de filas digitais para empresas. Permite que cl
 1. **QR Code Gerado**: Cada fila tem um QR Code único que direciona para a página de entrada
 2. **Cliente Escaneia**: Usa o celular para escanear o QR Code da fila desejada
 3. **Entra na Fila**: Preenche dados pessoais e recebe uma senha única
-4. **Acompanha em Tempo Real**: Via WebSocket, recebe atualizações sobre posição e senhas chamadas
+4. **Acompanha em Tempo Real**: Via Server-Sent Events, recebe atualizações sobre posição e senhas chamadas
 5. **É Chamado**: Recebe notificação quando sua senha for chamada
 
 ### **Endpoints Públicos**
@@ -55,7 +55,7 @@ Sistema moderno de gerenciamento de filas digitais para empresas. Permite que cl
 - `GET /api/rt/tickets/queue/{queueId}` - Buscar tickets de uma fila
 - `GET /api/rt/tickets/stats` - Estatísticas do sistema
 
-### **WebSocket Events**
+### **SSE Events**
 - `join-queue-client` - Entrar na fila para receber atualizações
 - `join-ticket` - Entrar no ticket específico
 - `queue-status-updated` - Atualizações de status da fila
@@ -64,22 +64,16 @@ Sistema moderno de gerenciamento de filas digitais para empresas. Permite que cl
 
 ### **Exemplo de Uso**
 
-#### **WebSocket (Socket.IO)**
+#### **Server-Sent Events (SSE)**
 ```javascript
-// Conectar ao WebSocket
-const socket = io('http://localhost:8080');
-
-// Entrar na fila
-socket.emit('join-queue-client', { queueId: 'fila-id' });
+// Conectar via EventSource (SSE)
+const eventSource = new EventSource('/api/v1/queues/fila-id/events');
 
 // Receber atualizações
-socket.on('queue-status-updated', (data) => {
+eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
     console.log('Fila atualizada:', data);
-});
-
-socket.on('call-made', (data) => {
-    console.log('Senha chamada:', data.ticket.myCallingToken);
-});
+};
 ```
 
 #### **Server-Sent Events (SSE) - Tempo Real**
@@ -107,7 +101,7 @@ const queueEventSource = new EventSource('/api/rt/tickets/queue/fila-id/stream')
 - **Igniter.js** - Sistema de tempo real otimizado
 - **Prisma** - ORM moderno
 - **PostgreSQL** - Banco de dados
-- **Socket.IO** - WebSocket para notificações
+- **EventSource API** - SSE para notificações
 - **Server-Sent Events (SSE)** - Streams de tempo real
 - **JWT** - Autenticação
 - **Swagger** - Documentação da API
@@ -128,7 +122,7 @@ const queueEventSource = new EventSource('/api/rt/tickets/queue/fila-id/stream')
 │ • Tirar senha   │    │ • Autenticação  │    │ • Tenants       │
 │ • Ver status    │    │ • Filas CRUD    │    │ • Filas         │
 │ • Notificações  │    │ • Tickets       │    │ • Tickets       │
-│ • Dashboard     │    │ • WebSocket     │    │ • Logs          │
+│ • Dashboard     │    │ • SSE          │    │ • Logs          │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │
                        ┌─────────────────┐
@@ -199,7 +193,7 @@ pnpm run test:cov
 ### **🔧 Desenvolvimento**
 - **API:** http://localhost:8080
 - **Banco:** Local PostgreSQL
-- **Tempo Real:** Server-Sent Events + WebSocket
+- **Tempo Real:** Server-Sent Events
 
 ### **🧪 QA**
 - **API:** https://fila-api-qa-[hash].europe-west1.run.app
@@ -257,9 +251,6 @@ REDIS_URL="redis://localhost:6379"
 NODE_ENV="development"
 PORT=8080
 CORS_ORIGIN="http://localhost:3000"
-
-# WebSockets
-WEBSOCKET_CORS_ORIGIN="http://localhost:3000"
 ```
 
 ## 🤝 Contribuição

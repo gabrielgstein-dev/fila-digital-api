@@ -14,7 +14,7 @@ on:
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID_PROD }}
   GCP_REGION: ${{ vars.GCP_REGION_PROD }}
-  SERVICE_NAME: ${{ vars.BACKEND_SERVICE_NAME_PROD }}
+  SERVICE_NAME: agiliza-api-prod
 
 jobs:
   deploy:
@@ -53,24 +53,58 @@ jobs:
           echo "❌ Evento não suportado para deploy de produção"
         fi
 
+    - name: Authenticate to Google Cloud
+      if: steps.version_check.outputs.should_deploy == 'true'
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
+
     - name: Setup Google Cloud CLI
       if: steps.version_check.outputs.should_deploy == 'true'
       uses: google-github-actions/setup-gcloud@v2
       with:
-        service_account_key: ${{ secrets.GCP_SA_KEY_PROD }}
         project_id: ${{ secrets.GCP_PROJECT_ID_PROD }}
 
     - name: Configure Docker to use gcloud as a credential helper
       if: steps.version_check.outputs.should_deploy == 'true'
-      run: gcloud auth configure-docker
+      run: |
+        echo "Configurando autenticação..."
+        gcloud auth list
+        gcloud config list
+        gcloud auth configure-docker gcr.io --quiet
+
+    - name: Force Clean Docker Cache Only
+      if: steps.version_check.outputs.should_deploy == 'true'
+      run: |
+        echo "🧹 Limpeza de cache Docker ANTES do build..."
+        docker system prune -af --volumes || true
+        docker builder prune -af || true
+
+        # Limpar imagens antigas
+        gcloud container images list-tags gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME \
+          --limit=999 --sort-by=TIMESTAMP \
+          --format="get(digest)" --filter="timestamp.datetime < -P3D" | \
+          head -n -2 | \
+          while read digest; do
+            if [ ! -z "$digest" ]; then
+              gcloud container images delete gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME@$digest --quiet --force-delete-tags || true
+            fi
+          done
 
     - name: Build Docker image
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
         VERSION="${{ steps.version_check.outputs.version }}"
-        docker build -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
-                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
-                     -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
+        if [[ -z "$GCP_PROJECT_ID" || -z "$SERVICE_NAME" ]]; then
+          echo "❌ Variáveis de ambiente críticas vazias"
+          exit 1
+        fi
+
+        docker build --platform linux/amd64 --no-cache -f Dockerfile.production \
+                       --build-arg DATABASE_URL="${{ secrets.DATABASE_URL_PROD }}" \
+                       -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+                       -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+                       -t gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:latest .
 
     - name: Push Docker image
       if: steps.version_check.outputs.should_deploy == 'true'
@@ -83,35 +117,20 @@ jobs:
     - name: Deploy to Cloud Run
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
-        echo "🚀 Iniciando deploy para produção..."
-        gcloud run deploy $SERVICE_NAME \
-          --image gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
-          --region $GCP_REGION \
-          --platform managed \
-          --allow-unauthenticated \
-          --port 8080 \
-          --memory 2Gi \
-          --cpu 2 \
-          --min-instances 1 \
-          --max-instances 50 \
-          --set-env-vars NODE_ENV=production \
-          --set-env-vars ENVIRONMENT=production \
-          --set-env-vars CORS_ORIGIN=https://fila-digital.com,https://www.fila-digital.com,https://app.fila-digital.com \
-          --set-env-vars DATABASE_PROVIDER=render \
-          --set-env-vars DATABASE_URL=${{ secrets.DATABASE_URL_PROD }} \
-          --set-env-vars JWT_SECRET=${{ secrets.JWT_SECRET_PROD }} \
-          --set-env-vars JWT_EXPIRES_IN=7d \
-          --set-env-vars RABBITMQ_URL=${{ secrets.RABBITMQ_URL_PROD }} \
-          --set-env-vars WHATSAPP_MIN_DELAY_MS=${{ secrets.WHATSAPP_MIN_DELAY_MS_PROD }} \
-          --set-env-vars META_API_VERSION=${{ secrets.META_API_VERSION_PROD }} \
-          --set-env-vars META_PHONE_NUMBER_ID=${{ secrets.META_PHONE_NUMBER_ID_PROD }} \
-          --set-env-vars META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN_PROD }} \
-          --set-env-vars FRONTEND_URL=${{ secrets.FRONTEND_URL_PROD }}
+        echo "🚀 Fazendo deploy forçado com nova imagem..."
+        VERSION="${{ steps.version_check.outputs.version }}"
+        gcloud run services update $SERVICE_NAME \
+          --image=gcr.io/$GCP_PROJECT_ID/$SERVICE_NAME:$VERSION \
+          --region=$GCP_REGION \
+          --project=$GCP_PROJECT_ID \
+          --platform=managed \
+          --update-env-vars="VERSION=$VERSION" \
+          --quiet
 
-    - name: Run Prisma Migrations (Production)
+    - name: Run Prisma Migrations
       if: steps.version_check.outputs.should_deploy == 'true'
       run: |
-        echo "🔒 Iniciando migrações do banco de dados em produção..."
+        echo "🚀 Aplicando migrações do banco de dados..."
 
         # Instalar o Prisma CLI globalmente
         echo "📦 Instalando Prisma CLI..."
@@ -121,17 +140,17 @@ jobs:
         export DATABASE_URL="${{ secrets.DATABASE_URL_PROD }}"
         export JWT_SECRET="${{ secrets.JWT_SECRET_PROD }}"
 
-        # Verificar migrações pendentes (apenas para log)
+        # Verificar migrações pendentes
         echo "🔍 Verificando migrações pendentes..."
-        npx prisma migrate status || echo "⚠️ Não foi possível verificar o status das migrações (isso é normal na primeira execução)"
+        npx prisma migrate status
 
-        # Aplicar migrações (modo seguro para produção)
-        echo "🚀 Aplicando migrações em produção..."
-        npx prisma migrate deploy --schema=./prisma/schema.prisma
+        # Aplicar migrações
+        echo "🚀 Aplicando migrações..."
+        npx prisma migrate deploy
 
         # Verificar o status após a migração
-        echo "✅ Migrações aplicadas com sucesso em produção!"
-        npx prisma migrate status || true
+        echo "✅ Migrações aplicadas com sucesso!"
+        npx prisma migrate status
       env:
         DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
         JWT_SECRET: ${{ secrets.JWT_SECRET_PROD }}

@@ -7,6 +7,31 @@ import express from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
+const MIN_NODE_VERSION = 24;
+
+function checkNodeVersion(): void {
+  const currentVersion = process.versions.node;
+  const majorVersion = parseInt(currentVersion.split('.')[0], 10);
+
+  if (majorVersion < MIN_NODE_VERSION) {
+    console.error('❌ ═══════════════════════════════════════════════════════════════');
+    console.error(`❌ ERRO FATAL: Versão do Node.js incompatível!`);
+    console.error(`❌ Versão atual: ${currentVersion}`);
+    console.error(`❌ Versão mínima requerida: ${MIN_NODE_VERSION}.0.0`);
+    console.error('❌ ═══════════════════════════════════════════════════════════════');
+    console.error('❌ Por favor, atualize o Node.js para a versão 24 ou superior.');
+    console.error('❌ Você pode usar nvm para gerenciar versões:');
+    console.error('❌   nvm install 24');
+    console.error('❌   nvm use 24');
+    console.error('❌ ═══════════════════════════════════════════════════════════════');
+    process.exit(1);
+  }
+
+  console.log(`✅ Node.js ${currentVersion} - Versão compatível`);
+}
+
+checkNodeVersion();
+
 async function bootstrap() {
   console.log('🚀 [STEP 1] Iniciando aplicação...');
   console.log('📊 [STEP 1] Variáveis de ambiente:');

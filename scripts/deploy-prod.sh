@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Configurações padrão
 DEFAULT_PROJECT_ID=""
 DEFAULT_REGION="us-central1"
-SERVICE_NAME="fila-api"
+SERVICE_NAME="agiliza-api"
 
 # Parâmetros
 PROJECT_ID=${1:-$DEFAULT_PROJECT_ID}
@@ -94,7 +94,9 @@ gcloud run deploy $SERVICE_NAME \
     --cpu 1 \
     --min-instances 0 \
     --max-instances 10 \
-    --set-env-vars NODE_ENV=production
+    --set-env-vars NODE_ENV=production \
+    --set-env-vars JWT_SECRET=temp-secret-key-change-in-production \
+    --set-env-vars DATABASE_URL=postgresql://temp:temp@localhost:5432/temp
 
 # Obter URL do serviço
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $REGION --format="value(status.url)")
@@ -111,4 +113,4 @@ echo -e ""
 echo -e "${YELLOW}🚀 Para automação completa via GitHub Actions:${NC}"
 echo -e "  1. Configure secrets no GitHub"
 echo -e "  2. Use os comandos de versionamento"
-echo -e "  3. Deploy automático será acionado" 
+echo -e "  3. Deploy automático será acionado"

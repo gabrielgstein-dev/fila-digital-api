@@ -1,12 +1,24 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { cleanDatabase } from './setup-database';
+const request = require('supertest');
 
-// 🛡️ SEGURANÇA: Garante que testes e2e só rodem no Docker
+const MIN_NODE_VERSION = 24;
+const currentVersion = process.versions.node;
+const majorVersion = parseInt(currentVersion.split('.')[0], 10);
+
+if (majorVersion < MIN_NODE_VERSION) {
+  console.error('❌ ═══════════════════════════════════════════════════════════════');
+  console.error(`❌ ERRO FATAL: Versão do Node.js incompatível!`);
+  console.error(`❌ Versão atual: ${currentVersion}`);
+  console.error(`❌ Versão mínima requerida: ${MIN_NODE_VERSION}.0.0`);
+  console.error('❌ ═══════════════════════════════════════════════════════════════');
+  process.exit(1);
+}
+
 if (!process.env.DOCKER_ENV) {
   console.error(
     '❌ ERRO CRÍTICO: Testes e2e só podem ser executados no ambiente Docker!',

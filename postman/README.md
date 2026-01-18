@@ -137,7 +137,7 @@ Após criar um ticket:
 1. Abra o backoffice no navegador: `http://localhost:3000`
 2. Faça login com o usuário corporativo
 3. Navegue até a fila correspondente
-4. O ticket deve aparecer automaticamente via SSE/WebSocket
+4. O ticket deve aparecer automaticamente via SSE
 
 ## ⚙️ Configuração de Dados de Teste
 
@@ -169,4 +169,3 @@ Para usar outros dados, atualize as variáveis no ambiente do Postman.
 - Todos os endpoints de criação de ticket são **públicos** (não requerem autenticação)
 - Endpoints de gerenciamento de filas requerem autenticação JWT
 - O workflow salva automaticamente os IDs para uso em requisições subsequentes
-

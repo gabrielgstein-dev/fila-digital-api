@@ -1,15 +1,13 @@
 import {
-  Inject,
-  Injectable,
-  Logger,
-  OnModuleInit,
-  forwardRef,
+    Injectable,
+    Logger,
+    OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 import TelegramBot from 'node-telegram-bot-api';
 import { CreateTicketDto } from '../common/dto/create-ticket.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { TicketsService } from '../tickets/tickets.service';
 
 export interface SendMessageOptions {
   chatId: string | number;
@@ -30,11 +28,12 @@ export class TelegramService implements OnModuleInit {
   private bot: TelegramBot | null = null;
   private readonly botToken: string | null;
 
+  private ticketsService: any;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
-    @Inject(forwardRef(() => TicketsService))
-    private readonly ticketsService: TicketsService,
+    private readonly moduleRef: ModuleRef,
   ) {
     this.botToken =
       this.configService.get<string>('TELEGRAM_BOT_TOKEN') || null;
@@ -64,6 +63,13 @@ export class TelegramService implements OnModuleInit {
       }
 
       this.setupCommands();
+
+      try {
+        const { TicketsService } = await import('../tickets/tickets.service');
+        this.ticketsService = this.moduleRef.get(TicketsService, { strict: false });
+      } catch (e) {
+        this.logger.warn('TicketsService não disponível para comandos Telegram');
+      }
     } catch (error) {
       this.logger.error(`Erro ao inicializar bot Telegram: ${error.message}`);
     }

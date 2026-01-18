@@ -105,34 +105,12 @@ if (ipConnections >= MAX_CONNECTIONS_PER_IP) {
 
 ---
 
-### **4. WebSocket (Opcional - Se Necessário Bidirecionalidade)**
-
-#### Quando Considerar
-- Se precisar de comunicação bidirecional
-- Se precisar de interatividade em tempo real
-- Se SSE não for suficiente
-
-#### Implementação
-```typescript
-import { Server } from 'socket.io';
-import { createAdapter } from '@socket.io/redis-adapter';
-
-const io = new Server(server);
-const pubClient = new Redis(process.env.REDIS_URL);
-const subClient = pubClient.duplicate();
-
-io.adapter(createAdapter(pubClient, subClient));
-```
-
----
-
-## 📊 **Comparação de Custos**
+## Comparação de Custos
 
 | Solução | Custo Mensal (1.000 usuários) | Escalabilidade | Complexidade |
 |---------|-------------------------------|----------------|--------------|
 | **Atual (SSE + PostgreSQL)** | $15-45 | ❌ Não escala | ⭐⭐ Simples |
 | **SSE + Redis Pub/Sub** | $25-55 | ✅ Escala bem | ⭐⭐⭐ Média |
-| **WebSocket + Redis** | $25-55 | ✅ Escala bem | ⭐⭐⭐⭐ Complexa |
 
 ---
 
@@ -174,5 +152,4 @@ Implementar quando:
 ## 📚 **Referências**
 
 - [Redis Pub/Sub Documentation](https://redis.io/docs/manual/pubsub/)
-- [Socket.io Redis Adapter](https://socket.io/docs/v4/redis-adapter/)
-- [SSE vs WebSocket](https://www.smashingmagazine.com/2018/02/sse-websockets-data-flow-http2/)
+- [SSE vs WebSocket Comparison](https://www.smashingmagazine.com/2018/02/sse-websockets-data-flow-http2/)

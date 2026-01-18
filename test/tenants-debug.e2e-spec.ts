@@ -1,5 +1,5 @@
 import { TestHelper } from './test-setup';
-import * as request from 'supertest';
+const request = require('supertest');
 
 describe('Tenants Debug (e2e)', () => {
   let testHelper: TestHelper;

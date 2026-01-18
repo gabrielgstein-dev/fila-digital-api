@@ -1,22 +1,22 @@
 import {
-  BadRequestException,
-  ForbiddenException,
-  Inject,
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-  NotFoundException,
-  forwardRef,
+    BadRequestException,
+    ForbiddenException,
+    Injectable,
+    InternalServerErrorException,
+    Logger,
+    NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TicketStatus } from '@prisma/client';
 import { CreateTicketDto } from '../common/dto/create-ticket.dto';
-import { EventsGateway } from '../events/events.gateway';
-import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { WhatsAppQueueService } from '../whatsapp/whatsapp-queue.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { TicketEstimateService } from './helpers/ticket-estimate.service';
+import { TicketNotificationService } from './helpers/ticket-notification.service';
+import { TicketNumberService } from './helpers/ticket-number.service';
+import { TicketValidationService } from './helpers/ticket-validation.service';
 
 @Injectable()
 export class TicketsService {
@@ -24,15 +24,26 @@ export class TicketsService {
 
   constructor(
     private prisma: PrismaService,
-    private eventsGateway: EventsGateway,
-    private eventsService: EventsService,
     private configService: ConfigService,
-    @Inject(forwardRef(() => TelegramService))
     private telegramService: TelegramService,
     private whatsappService: WhatsAppService,
     private whatsappQueueService: WhatsAppQueueService,
+    private estimateService: TicketEstimateService,
+    private validationService: TicketValidationService,
+    private numberService: TicketNumberService,
+    private notificationService: TicketNotificationService,
   ) {}
 
+  /**
+   * Cria um novo ticket na fila especificada
+   * @param queueId - ID da fila onde o ticket será criado
+   * @param createTicketDto - Dados do cliente (nome, telefone, prioridade)
+   * @param userId - ID do usuário autenticado (opcional)
+   * @returns Ticket criado com posição e tempo estimado
+   * @throws NotFoundException se a fila não existir
+   * @throws BadRequestException se a fila estiver cheia ou inativa
+   * @throws ForbiddenException se o tenant estiver inativo
+   */
   async create(
     queueId: string,
     createTicketDto: CreateTicketDto,
@@ -41,184 +52,63 @@ export class TicketsService {
     try {
       this.logger.log(`Criando ticket para fila: ${queueId}`);
 
-      const queue = await this.prisma.queue.findUnique({
-        where: { id: queueId },
-        select: {
-          id: true,
-          name: true,
-          isActive: true,
-          capacity: true,
-          avgServiceTime: true,
-          queueType: true,
-          tenant: {
-            select: {
-              id: true,
-              name: true,
-              isActive: true,
-            },
-          },
-        },
-      });
-
-      if (!queue) {
-        throw new NotFoundException('Fila não encontrada');
-      }
-
-      if (!queue.tenant) {
-        throw new BadRequestException('Tenant não encontrado para esta fila');
-      }
-
-      if (queue.tenant.isActive !== true) {
-        throw new BadRequestException('Tenant não está ativo');
-      }
-
-      if (queue.isActive !== true) {
-        throw new BadRequestException('Fila não está ativa');
-      }
+      const queue = await this.validationService.validateQueueAndTenant(queueId);
+      await this.validationService.validateQueueCapacity(queueId);
 
       const waitingTicketsCount = await this.prisma.ticket.count({
-        where: {
+        where: { queueId, status: TicketStatus.WAITING },
+      });
+
+      const position = waitingTicketsCount + 1;
+      const estimatedTime = await this.estimateService.calculateEstimatedTime(
+        queueId,
+        position,
+      );
+
+      const ticketNumber = await this.numberService.getNextTicketNumber(
+        queueId,
+        queue.queueType,
+      );
+
+      const ticket = await this.prisma.ticket.create({
+        data: {
+          clientName: createTicketDto.clientName ?? null,
+          clientCpf: createTicketDto.clientCpf ?? null,
+          clientPhone: createTicketDto.clientPhone ?? null,
+          clientEmail: createTicketDto.clientEmail ?? null,
+          telegramChatId: createTicketDto.telegramChatId ?? null,
+          priority: createTicketDto.priority ?? 1,
           queueId,
+          estimatedTime,
+          userId: userId || null,
           status: TicketStatus.WAITING,
+          myCallingToken: ticketNumber,
+        },
+        include: {
+          queue: {
+            include: {
+              tenant: true,
+            },
+          },
+          user: true,
         },
       });
 
-      if (waitingTicketsCount >= queue.capacity) {
-        throw new BadRequestException('Fila está cheia');
-      }
+      const estimatedMinutes = Math.ceil(estimatedTime / 60);
 
-      const queuePrefix = this.getQueuePrefix(queue);
-      const estimatedTime = this.calculateEstimatedTime(
-        waitingTicketsCount,
-        queue.avgServiceTime,
+      await this.notificationService.notifyTicketCreated(
+        ticket,
+        ticket.queue,
+        position,
+        estimatedMinutes,
       );
-
-      const ticketData = {
-        clientName: createTicketDto.clientName ?? null,
-        clientCpf: createTicketDto.clientCpf ?? null,
-        clientPhone: createTicketDto.clientPhone ?? null,
-        clientEmail: createTicketDto.clientEmail ?? null,
-        telegramChatId: createTicketDto.telegramChatId ?? null,
-        priority: createTicketDto.priority ?? 1,
-        queueId,
-        estimatedTime,
-        userId: userId || null,
-        status: TicketStatus.WAITING,
-      };
-
-      const ticket = await this.createTicketWithRetry(
-        queueId,
-        queuePrefix,
-        ticketData,
-      );
-
-      const position = waitingTicketsCount + 1;
-
-      try {
-        this.eventsService.emitQueueStatusUpdate(queueId, {
-          totalWaiting: position,
-          lastTicketCreated: ticket.myCallingToken,
-          estimatedWaitTime: estimatedTime,
-        });
-      } catch (error) {
-        this.logger.error(
-          `Erro ao emitir atualização de status da fila: ${error instanceof Error ? error.message : String(error)}`,
-          error instanceof Error ? error.stack : undefined,
-        );
-      }
-
-      try {
-        this.eventsService.emitTicketStatusChanged(
-          ticket.id,
-          null,
-          TicketStatus.WAITING,
-          {
-            ticketId: ticket.id,
-            myCallingToken: ticket.myCallingToken,
-            position,
-            estimatedTime,
-          },
-        );
-      } catch (error) {
-        this.logger.error(
-          `Erro ao emitir mudança de status do ticket: ${error instanceof Error ? error.message : String(error)}`,
-          error instanceof Error ? error.stack : undefined,
-        );
-      }
-
-      const telegramChatId = (ticket as { telegramChatId?: string })
-        .telegramChatId;
-      if (telegramChatId && this.telegramService.isConfigured()) {
-        try {
-          const estimatedMinutes = Math.ceil(
-            (position * queue.avgServiceTime) / 60,
-          );
-          await this.telegramService.sendQueueStatusUpdate(
-            telegramChatId,
-            ticket.queue.tenant.name,
-            ticket.myCallingToken,
-            position,
-            estimatedMinutes,
-          );
-        } catch (error) {
-          this.logger.error(
-            `Erro ao enviar notificação Telegram: ${error instanceof Error ? error.message : String(error)}`,
-            error instanceof Error ? error.stack : undefined,
-          );
-        }
-      }
-
-      if (ticket.clientPhone && this.whatsappService.isConfigured()) {
-        try {
-          const estimatedMinutes = Math.ceil(
-            (position * queue.avgServiceTime) / 60,
-          );
-          const baseUrl =
-            this.configService.get<string>('FRONTEND_URL') ||
-            'http://localhost:3000';
-
-          this.whatsappQueueService
-            .enqueue(
-              ticket.clientPhone,
-              ticket.queue.tenant.name,
-              ticket.myCallingToken,
-              position,
-              estimatedMinutes,
-              ticket.id,
-              baseUrl,
-              ticket.clientName || undefined,
-              queue.name,
-            )
-            .then((result) => {
-              if (result.success) {
-                this.logger.log(
-                  `Notificação WhatsApp enviada com sucesso para ${ticket.clientPhone} - Senha: ${ticket.myCallingToken}`,
-                );
-              } else {
-                this.logger.error(
-                  `Erro ao enviar WhatsApp para ${ticket.clientPhone}: ${result.error}`,
-                );
-              }
-            })
-            .catch((error) => {
-              this.logger.error(
-                `Erro ao enviar WhatsApp para ${ticket.clientPhone}: ${error instanceof Error ? error.message : String(error)}`,
-                error instanceof Error ? error.stack : undefined,
-              );
-            });
-        } catch (error) {
-          this.logger.error(
-            `Erro ao adicionar WhatsApp à fila para ${ticket.clientPhone}: ${error instanceof Error ? error.message : String(error)}`,
-            error instanceof Error ? error.stack : undefined,
-          );
-        }
-      }
 
       return ticket;
     } catch (error) {
       if (
         error instanceof NotFoundException ||
-        error instanceof BadRequestException
+        error instanceof BadRequestException ||
+        error instanceof ForbiddenException
       ) {
         throw error;
       }
@@ -234,6 +124,12 @@ export class TicketsService {
     }
   }
 
+  /**
+   * Busca um ticket pelo ID com posição e tempo estimado atualizados
+   * @param id - ID do ticket
+   * @returns Ticket com posição e tempo estimado
+   * @throws NotFoundException se o ticket não existir
+   */
   async findOne(id: string) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },
@@ -250,16 +146,28 @@ export class TicketsService {
       throw new NotFoundException('Ticket não encontrado');
     }
 
-    const position = await this.getTicketPosition(ticket.queueId, ticket.id);
-    const updatedEstimatedTime = await this.updateEstimatedTime(ticket);
+    const position = await this.estimateService.getTicketPosition(
+      ticket.queueId,
+      ticket.id,
+    );
+    const estimatedTime = await this.estimateService.calculateEstimatedTime(
+      ticket.queueId,
+      position,
+    );
 
     return {
       ...ticket,
       position,
-      estimatedTime: updatedEstimatedTime,
+      estimatedTime,
     };
   }
 
+  /**
+   * Retorna o status completo do ticket com estimativas em tempo real
+   * @param id - ID do ticket
+   * @returns Status do ticket com posição, tempo estimado e informações da fila
+   * @throws NotFoundException se o ticket não existir
+   */
   async getTicketStatusWithEstimate(id: string) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },
@@ -279,98 +187,19 @@ export class TicketsService {
 
     let position = 0;
     let estimatedTimeToCall = 0;
-    let currentTicket = null;
     let avgServiceTimeReal = null;
 
     if (ticket.status === TicketStatus.WAITING) {
-      const waitingTickets = await this.prisma.ticket.findMany({
-        where: {
-          queueId: ticket.queueId,
-          status: TicketStatus.WAITING,
-        },
-        orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
-      });
-
-      position = waitingTickets.findIndex((t) => t.id === ticket.id) + 1;
+      position = await this.estimateService.getTicketPosition(
+        ticket.queueId,
+        ticket.id,
+      );
 
       if (position > 0) {
-        try {
-          const threeHoursAgo = new Date();
-          threeHoursAgo.setHours(threeHoursAgo.getHours() - 3);
-
-          const result = await this.prisma.$queryRaw<
-            Array<{ avg_recent_service_time: number | null }>
-          >`
-            SELECT
-              AVG((metadata->>'serviceTime')::numeric)::integer as avg_recent_service_time
-            FROM queue_ticket_history
-            WHERE "queueId" = ${ticket.queueId}
-              AND action = 'COMPLETED'
-              AND "calledAt" >= ${threeHoursAgo}
-              AND metadata->>'serviceTime' IS NOT NULL
-              AND (metadata->>'serviceTime')::numeric > 0
-          `;
-
-          avgServiceTimeReal = result[0]?.avg_recent_service_time;
-
-          if (avgServiceTimeReal && avgServiceTimeReal > 0) {
-            estimatedTimeToCall = position * avgServiceTimeReal;
-          } else {
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-            const result7Days = await this.prisma.$queryRaw<
-              Array<{ avg_service_time: number | null }>
-            >`
-              SELECT
-                AVG((metadata->>'serviceTime')::numeric)::integer as avg_service_time
-              FROM queue_ticket_history
-              WHERE "queueId" = ${ticket.queueId}
-                AND action = 'COMPLETED'
-                AND "calledAt" >= ${sevenDaysAgo}
-                AND metadata->>'serviceTime' IS NOT NULL
-                AND (metadata->>'serviceTime')::numeric > 0
-            `;
-
-            avgServiceTimeReal = result7Days[0]?.avg_service_time;
-
-            if (avgServiceTimeReal && avgServiceTimeReal > 0) {
-              estimatedTimeToCall = position * avgServiceTimeReal;
-            } else {
-              estimatedTimeToCall = 0;
-            }
-          }
-        } catch (error) {
-          console.error('Erro ao calcular tempo estimado:', error);
-          estimatedTimeToCall = 0;
-        }
-      }
-    } else if (ticket.status === TicketStatus.CALLED) {
-      estimatedTimeToCall = 0;
-      currentTicket = ticket.myCallingToken;
-    }
-
-    if (!avgServiceTimeReal) {
-      try {
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-        const result = await this.prisma.$queryRaw<
-          Array<{ avg_service_time: number | null }>
-        >`
-          SELECT
-            AVG((metadata->>'serviceTime')::numeric)::integer as avg_service_time
-          FROM queue_ticket_history
-          WHERE "queueId" = ${ticket.queueId}
-            AND action = 'COMPLETED'
-            AND "calledAt" >= ${sevenDaysAgo}
-            AND metadata->>'serviceTime' IS NOT NULL
-            AND (metadata->>'serviceTime')::numeric > 0
-        `;
-
-        avgServiceTimeReal = result[0]?.avg_service_time || null;
-      } catch (error) {
-        console.error('Erro ao calcular tempo médio:', error);
+        avgServiceTimeReal = await this.estimateService.getAverageServiceTime(
+          ticket.queueId,
+        );
+        estimatedTimeToCall = position * avgServiceTimeReal;
       }
     }
 
@@ -440,10 +269,13 @@ export class TicketsService {
       throw new NotFoundException('Fila não encontrada para este ticket');
     }
 
-    const position = await this.getTicketPosition(ticket.queueId, ticket.id);
-    const estimatedWaitTime = this.calculateEstimatedTime(
-      position - 1,
-      ticket.queue.avgServiceTime,
+    const position = await this.estimateService.getTicketPosition(
+      ticket.queueId,
+      ticket.id,
+    );
+    const estimatedWaitTime = await this.estimateService.calculateEstimatedTime(
+      ticket.queueId,
+      position,
     );
 
     return {
@@ -455,6 +287,13 @@ export class TicketsService {
     };
   }
 
+  /**
+   * Rechama um ticket que já foi chamado
+   * @param id - ID do ticket
+   * @returns Ticket rechamado
+   * @throws NotFoundException se o ticket não existir
+   * @throws BadRequestException se o ticket não estiver com status CALLED
+   */
   async recall(id: string) {
     const ticket = await this.findOne(id);
 
@@ -464,7 +303,7 @@ export class TicketsService {
       );
     }
 
-    const updatedTicket = await this.prisma.ticket.update({
+    return this.prisma.ticket.update({
       where: { id },
       data: {
         calledAt: new Date(),
@@ -473,10 +312,15 @@ export class TicketsService {
         queue: true,
       },
     });
-
-    return updatedTicket;
   }
 
+  /**
+   * Pula um ticket chamado, retornando-o para a fila
+   * @param id - ID do ticket
+   * @returns Ticket com status WAITING
+   * @throws NotFoundException se o ticket não existir
+   * @throws BadRequestException se o ticket não estiver com status CALLED
+   */
   async skip(id: string) {
     const ticket = await this.findOne(id);
 
@@ -498,6 +342,15 @@ export class TicketsService {
     });
   }
 
+  /**
+   * Completa o atendimento de um ticket
+   * @param id - ID do ticket
+   * @param currentAgentId - ID do agente que está completando (opcional)
+   * @returns Ticket completado
+   * @throws NotFoundException se o ticket não existir
+   * @throws BadRequestException se o ticket não estiver sendo atendido
+   * @throws ForbiddenException se o agente não tiver permissão
+   */
   async complete(id: string, currentAgentId?: string) {
     const ticket = await this.findOne(id);
 
@@ -512,25 +365,11 @@ export class TicketsService {
 
     let agent = null;
     if (currentAgentId) {
-      agent = await this.prisma.agent.findUnique({
-        where: { id: currentAgentId },
-      });
-
-      if (!agent) {
-        throw new BadRequestException('Agente não encontrado');
-      }
-
-      if (agent.tenantId !== ticket.queue.tenantId) {
-        throw new ForbiddenException(
-          'Acesso negado: você não tem permissão para completar tickets deste tenant',
-        );
-      }
+      agent = await this.validateAgentAccess(currentAgentId, ticket.queue.tenantId);
     }
 
     const completedAt = new Date();
-    const serviceTime = ticket.calledAt
-      ? Math.floor((completedAt.getTime() - ticket.calledAt.getTime()) / 1000)
-      : null;
+    const serviceTime = this.calculateServiceTime(ticket.calledAt, completedAt);
 
     const updatedTicket = await this.prisma.ticket.update({
       where: { id },
@@ -544,34 +383,7 @@ export class TicketsService {
     });
 
     if (agent && ticket.calledAt) {
-      try {
-        const counter = await this.prisma.counter.findFirst({
-          where: {
-            tenantId: agent.tenantId,
-            isActive: true,
-          },
-          orderBy: {
-            number: 'asc',
-          },
-        });
-
-        if (counter) {
-          await this.prisma.callLog.create({
-            data: {
-              id: `cl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              action: 'COMPLETED',
-              calledAt: ticket.calledAt,
-              serviceTime: serviceTime,
-              ticketId: ticket.id,
-              queueId: ticket.queueId,
-              agentId: agent.id,
-              counterId: counter.id,
-            },
-          });
-        }
-      } catch (error) {
-        console.error('Erro ao criar CallLog:', error);
-      }
+      await this.createCallLog(ticket, agent.id, serviceTime);
     }
 
     return updatedTicket;
@@ -588,24 +400,11 @@ export class TicketsService {
       throw new NotFoundException('Ticket não encontrado');
     }
 
-    // Se um agente está tentando atualizar o token, verificar se pertence ao tenant
     if (currentAgentId) {
-      const agent = await this.prisma.agent.findUnique({
-        where: { id: currentAgentId },
-      });
-
-      if (!agent) {
-        throw new BadRequestException('Agente não encontrado');
-      }
-
-      if (agent.tenantId !== ticket.queue.tenantId) {
-        throw new ForbiddenException(
-          'Acesso negado: você não tem permissão para atualizar tokens deste tenant',
-        );
-      }
+      await this.validateAgentAccess(currentAgentId, ticket.queue.tenantId);
     }
 
-    const updatedTicket = await this.prisma.ticket.update({
+    return this.prisma.ticket.update({
       where: { id },
       data: {
         myCallingToken: newToken,
@@ -618,171 +417,6 @@ export class TicketsService {
         },
       },
     });
-
-    this.eventsGateway.emitCurrentCallingTokenUpdate(
-      ticket.queue.tenantId,
-      ticket.queue.queueType,
-      {
-        ticketId: id,
-        oldToken: ticket.myCallingToken,
-        newToken,
-        queueId: ticket.queueId,
-        queueName: ticket.queue.name,
-        tenantId: ticket.queue.tenantId,
-        tenantName: ticket.queue.tenant.name,
-      },
-    );
-
-    return updatedTicket;
-  }
-
-  private calculateEstimatedTime(
-    position: number,
-    avgServiceTime: number | null,
-  ): number {
-    return position * (avgServiceTime || 300);
-  }
-
-  private async getTicketPosition(
-    queueId: string,
-    ticketId: string,
-  ): Promise<number> {
-    const waitingTickets = await this.prisma.ticket.findMany({
-      where: {
-        queueId,
-        status: TicketStatus.WAITING,
-      },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
-    });
-
-    const position = waitingTickets.findIndex(
-      (ticket) => ticket.id === ticketId,
-    );
-    return position + 1;
-  }
-
-  private async updateEstimatedTime(ticket: any): Promise<number> {
-    if (ticket.status !== TicketStatus.WAITING) {
-      return 0;
-    }
-
-    const position = await this.getTicketPosition(ticket.queueId, ticket.id);
-    return this.calculateEstimatedTime(
-      position - 1,
-      ticket.queue.avgServiceTime,
-    );
-  }
-
-  private async createTicketWithRetry(
-    queueId: string,
-    queuePrefix: string,
-    ticketData: {
-      clientName: string | null;
-      clientCpf: string | null;
-      clientPhone: string | null;
-      clientEmail: string | null;
-      telegramChatId: string | null;
-      priority: number;
-      queueId: string;
-      estimatedTime: number;
-      userId: string | null;
-      status: TicketStatus;
-    },
-    maxRetries = 3,
-  ) {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const result = await this.prisma.$queryRaw<Array<{ max_number: bigint | null }>>`
-          SELECT MAX(
-            CAST(
-              NULLIF(
-                REGEXP_REPLACE("myCallingToken", '[^0-9]', '', 'g'),
-                ''
-              ) AS INTEGER
-            )
-          ) as max_number
-          FROM tickets
-          WHERE "queueId" = ${queueId}
-            AND "myCallingToken" LIKE ${`${queuePrefix}%`}
-        `;
-
-        const maxNumber = result[0]?.max_number
-          ? Number(result[0].max_number)
-          : 0;
-        const nextNumber = maxNumber + 1;
-        const nextToken = `${queuePrefix}${nextNumber}`;
-
-        if (attempt > 1) {
-          this.logger.debug(
-            `Tentativa ${attempt}: Criando ticket com token ${nextToken}`,
-          );
-        }
-
-        const ticket = await this.prisma.ticket.create({
-          data: {
-            ...ticketData,
-            myCallingToken: nextToken,
-          },
-          include: {
-            queue: {
-              include: {
-                tenant: true,
-              },
-            },
-            user: true,
-          },
-        });
-
-        return ticket;
-      } catch (error: unknown) {
-        const prismaError = error as {
-          code?: string;
-          meta?: { target?: string[] };
-        };
-
-        const isUniqueConstraintError =
-          prismaError.code === 'P2002' &&
-          prismaError.meta?.target?.some(
-            (field) => field === 'myCallingToken' || field === 'queueId',
-          );
-
-        if (isUniqueConstraintError && attempt < maxRetries) {
-          const delay = Math.min(100 * attempt, 300);
-          this.logger.warn(
-            `Conflito de token detectado (race condition). Tentativa ${attempt}/${maxRetries}. Aguardando ${delay}ms...`,
-          );
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          continue;
-        }
-
-        this.logger.error(
-          `Erro ao criar ticket (tentativa ${attempt}): ${error instanceof Error ? error.message : String(error)}`,
-        );
-        throw error;
-      }
-    }
-
-    throw new InternalServerErrorException(
-      'Não foi possível criar ticket após múltiplas tentativas',
-    );
-  }
-
-  private getQueuePrefix(queue: any): string {
-    let prefix = 'G';
-
-    if (queue.queueType === 'PRIORITY') {
-      prefix = 'P';
-    } else if (queue.queueType === 'VIP') {
-      prefix = 'V';
-    }
-
-    return prefix;
-  }
-
-  private extractNumberFromToken(token?: string): number {
-    if (!token) return 0;
-    const match = token.match(/\d+$/);
-    return match ? parseInt(match[0], 10) : 0;
   }
 
   async getQueueStatus(queueId: string) {
@@ -812,14 +446,85 @@ export class TicketsService {
     const currentCallingToken =
       lastCalledTicket?.myCallingToken || 'Aguardando...';
 
+    const estimatedWaitTime = await this.estimateService.calculateEstimatedTime(
+      queueId,
+      queue.tickets.length,
+    );
+
     return {
       queueId: queue.id,
       queueName: queue.name,
       tenantName: queue.tenant.name,
       currentCallingToken,
       totalWaiting: queue.tickets.length,
-      estimatedWaitTime: queue.tickets.length * (queue.avgServiceTime || 300),
+      estimatedWaitTime,
       lastUpdated: new Date(),
     };
+  }
+
+  private async validateAgentAccess(agentId: string, tenantId: string) {
+    const agent = await this.prisma.agent.findUnique({
+      where: { id: agentId },
+    });
+
+    if (!agent) {
+      throw new BadRequestException('Agente não encontrado');
+    }
+
+    if (agent.tenantId !== tenantId) {
+      throw new ForbiddenException(
+        'Acesso negado: você não tem permissão para acessar recursos deste tenant',
+      );
+    }
+
+    return agent;
+  }
+
+  private calculateServiceTime(
+    calledAt: Date | null,
+    completedAt: Date,
+  ): number | null {
+    if (!calledAt) {
+      return null;
+    }
+    return Math.floor((completedAt.getTime() - calledAt.getTime()) / 1000);
+  }
+
+  private async createCallLog(
+    ticket: any,
+    agentId: string,
+    serviceTime: number | null,
+  ): Promise<void> {
+    try {
+      const counter = await this.prisma.counter.findFirst({
+        where: {
+          tenantId: ticket.queue.tenantId,
+          isActive: true,
+        },
+        orderBy: {
+          number: 'asc',
+        },
+      });
+
+      if (counter) {
+        await this.prisma.callLog.create({
+          data: {
+            id: `cl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            action: 'COMPLETED',
+            calledAt: ticket.calledAt,
+            serviceTime: serviceTime,
+            ticketId: ticket.id,
+            queueId: ticket.queueId,
+            agentId: agentId,
+            counterId: counter.id,
+          },
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Erro ao criar CallLog: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
   }
 }

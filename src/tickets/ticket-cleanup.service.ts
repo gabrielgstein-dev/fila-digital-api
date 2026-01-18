@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Ticket, TicketStatus } from '@prisma/client';
-import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -9,7 +8,6 @@ export class TicketCleanupService {
 
   constructor(
     private prisma: PrismaService,
-    private eventsService: EventsService,
   ) {}
 
   /**
@@ -54,20 +52,6 @@ export class TicketCleanupService {
               completedAt: new Date(),
             },
           });
-
-          // Emitir evento de ticket abandonado
-          this.eventsService.emitTicketStatusChanged(
-            ticket.id,
-            TicketStatus.CALLED,
-            TicketStatus.NO_SHOW,
-            {
-              ticketId: ticket.id,
-              myCallingToken: ticket.myCallingToken,
-              reason: 'timeout',
-              timeElapsedMinutes: timeElapsed,
-              toleranceMinutes: 0, // DESABILITADO
-            },
-          );
 
           cleanedCount++;
           this.logger.warn(
@@ -115,17 +99,6 @@ export class TicketCleanupService {
             completedAt: new Date(),
           },
         });
-
-        this.eventsService.emitTicketStatusChanged(
-          ticket.id,
-          TicketStatus.CALLED,
-          TicketStatus.NO_SHOW,
-          {
-            ticketId: ticket.id,
-            myCallingToken: ticket.myCallingToken,
-            reason: 'manual_cleanup',
-          },
-        );
 
         cleanedCount++;
       }

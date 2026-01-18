@@ -1,7 +1,7 @@
 # Endpoint de Atualização do CurrentCallingToken
 
 ## Descrição
-Este endpoint permite atualizar o `currentCallingToken` de um ticket específico e dispara um evento websocket para notificar todos os clientes inscritos sobre a mudança.
+Este endpoint permite atualizar o `currentCallingToken` de um ticket específico.
 
 ## Endpoint
 ```
@@ -33,10 +33,9 @@ Requer autenticação JWT (Bearer Token) e validação de tenant.
 - **403**: Acesso negado (usuário não pertence ao tenant)
 - **404**: Ticket não encontrado
 
-## Evento WebSocket
-Após a atualização, um evento é emitido para todos os clientes inscritos:
+## Notificação de Atualização
 
-### Evento: `current-calling-token-updated`
+A atualização do token pode ser consultada através dos endpoints REST da API.
 ```json
 {
   "ticketId": "ticket_id",
@@ -49,45 +48,21 @@ Após a atualização, um evento é emitido para todos os clientes inscritos:
 }
 ```
 
-## Como se inscrever para receber atualizações
+## Como Consultar Atualizações
 
-### 1. Por Tenant (Empresa)
+### 1. Via API REST
 ```javascript
-// Conectar ao websocket
-const socket = io('ws://localhost:3000');
+// Consultar status atual via API
+const response = await fetch(`/api/v1/tenants/${tenantId}/current-calling-token`);
+const data = await response.json();
+console.log('Token atual:', data);
 
-// Inscrever para receber atualizações de um tenant específico
-socket.emit('join-tenant-current-calling-token', {
-  tenantId: 'tenant_id'
-});
-
-// Escutar atualizações
-socket.on('current-calling-token-updated', (data) => {
-  console.log('Token atualizado:', data);
-});
-
-// Cancelar inscrição
-socket.emit('leave-tenant-current-calling-token', {
-  tenantId: 'tenant_id'
-});
-```
-
-### 2. Por Tipo de Fila
-```javascript
-// Inscrever para receber atualizações de um tipo de fila específico
-socket.emit('join-queue-type-current-calling-token', {
-  queueType: 'GENERAL'
-});
-
-// Escutar atualizações
-socket.on('current-calling-token-updated', (data) => {
-  console.log('Token atualizado:', data);
-});
-
-// Cancelar inscrição
-socket.emit('leave-queue-type-current-calling-token', {
-  queueType: 'GENERAL'
-});
+// Para atualizações em tempo real, implementar polling
+setInterval(async () => {
+  const response = await fetch(`/api/v1/tenants/${tenantId}/current-calling-token`);
+  const data = await response.json();
+  updateCurrentCallingTokenDisplay(data.currentCallingToken);
+}, 5000); // A cada 5 segundos
 ```
 
 ## Exemplo de Uso
@@ -103,22 +78,33 @@ curl -X PUT \
   }'
 ```
 
-### Cliente WebSocket em JavaScript
+### Cliente JavaScript
 ```javascript
-const socket = io('ws://localhost:3000');
+// Consultar periodicamente via API
+async function getCurrentCallingToken(queueId) {
+  const response = await fetch(`/api/v1/queues/${queueId}/current-calling-token`);
+  return await response.json();
+}
 
-// Inscrever para receber atualizações
-socket.emit('join-tenant-current-calling-token', {
-  tenantId: 'tenant_id'
-});
+// Implementar polling para atualizações
+let pollingInterval;
 
-// Escutar atualizações
-socket.on('current-calling-token-updated', (data) => {
-  if (data.tenantId === 'tenant_id') {
-    // Atualizar UI com novo token
-    updateCurrentCallingTokenDisplay(data.newToken);
+function startPolling(queueId) {
+  pollingInterval = setInterval(async () => {
+    try {
+      const data = await getCurrentCallingToken(queueId);
+      updateCurrentCallingTokenDisplay(data.currentCallingToken);
+    } catch (error) {
+      console.error('Erro ao buscar token:', error);
+    }
+  }, 3000); // A cada 3 segundos
+}
+
+function stopPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
   }
-});
+}
 
 function updateCurrentCallingTokenDisplay(token) {
   const display = document.getElementById('current-calling-token');
@@ -137,7 +123,6 @@ function updateCurrentCallingTokenDisplay(token) {
 ## Segurança
 - Apenas usuários autenticados podem atualizar tokens
 - Usuários só podem modificar tickets do seu próprio tenant
-- O evento é emitido apenas para clientes inscritos
 - Validação de dados é feita tanto no controller quanto no service
 - Guard de segurança valida permissões de tenant em tempo de execução
 

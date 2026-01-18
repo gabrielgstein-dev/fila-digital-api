@@ -115,7 +115,7 @@ async function checkTestData() {
       );
       console.log(`   2. Isso criará um ticket na fila`);
       console.log(
-        `   3. O backoffice deve receber a atualização via SSE/WebSocket`,
+        `   3. O backoffice deve receber a atualização via SSE`,
       );
     } else {
       console.log('⚠️  Nenhum tenant com fila encontrado para teste!');

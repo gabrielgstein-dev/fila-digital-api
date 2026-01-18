@@ -359,20 +359,6 @@ describe('Security Tests (e2e)', () => {
     });
   });
 
-  describe('🔄 WebSocket Security', () => {
-    it('deve verificar origem em conexões WebSocket', async () => {
-      // Este teste é mais conceitual - WebSocket security
-      // seria testado com um cliente WebSocket real
-      const response = await testHelper
-        .getRequest()
-        .get('/socket.io/')
-        .set('Origin', 'http://malicious-site.com');
-
-      // Socket.io deve estar configurado para verificar origem
-      expect(response.status).toBeDefined();
-    });
-  });
-
   describe('📊 Information Disclosure', () => {
     it('não deve expor versões de software em headers', async () => {
       const response = await testHelper.getRequest().get('/api/v1').expect(200);

@@ -1,11 +1,12 @@
 import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
+    Injectable,
+    Logger,
+    OnModuleDestroy,
+    OnModuleInit,
 } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
 
 @Injectable()
 export class PrismaService
@@ -15,9 +16,19 @@ export class PrismaService
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
-    const adapter = new PrismaPg({
-      connectionString: process.env.DATABASE_URL!,
+    const databaseUrl = process.env.DATABASE_URL;
+
+    if (!databaseUrl) {
+      throw new Error('DATABASE_URL não está configurada');
+    }
+
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: {
+        rejectUnauthorized: false
+      }
     });
+    const adapter = new PrismaPg(pool);
 
     super({
       adapter,

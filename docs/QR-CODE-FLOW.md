@@ -4,7 +4,7 @@
 
 Este documento descreve o fluxo completo onde um cliente:
 1. Escaneia um QR Code para entrar em uma fila
-2. Recebe notificações em tempo real sobre mudanças de senha via WebSocket
+2. Recebe notificações em tempo real sobre mudanças de senha via SSE
 
 ## Endpoints Implementados
 
@@ -93,60 +93,50 @@ Authorization: Bearer <JWT_TOKEN>
 
 **Descrição:** Retorna informações detalhadas sobre um ticket específico.
 
-## WebSocket Events
+## SSE Events
 
-### Conectar ao WebSocket
+### Conectar ao SSE
 
 ```javascript
-import { io } from 'socket.io-client';
+// Conectar via EventSource (SSE)
+const eventSource = new EventSource('/api/v1/queues/clq1234567890abcdef/events');
 
-const socket = io('http://localhost:3000');
+// Escutar eventos de atualização da fila
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Atualização da fila:', data);
 
-// Entrar na fila para receber atualizações
-socket.emit('join-queue-client', {
-  queueId: 'clq1234567890abcdef',
-  clientIdentifier: '+5511999999999' // opcional
-});
+  // Atualizar interface com novos dados
+  if (data.type === 'queue-updated') {
+    document.getElementById('currentToken').textContent = data.currentCallingToken || 'Aguardando...';
+    document.getElementById('totalWaiting').textContent = data.totalWaiting || 0;
+    document.getElementById('estimatedTime').textContent = Math.ceil((data.totalWaiting || 0) * 5) + ' minutos';
+  }
 
-// Entrar no ticket específico para receber atualizações
-socket.emit('join-ticket', {
-  ticketId: 'tkt1234567890abcdef'
-});
+  if (data.type === 'ticket-called') {
+    alert(`Senha ${data.ticket.myCallingToken} está sendo chamada!`);
+  }
+};
+
+eventSource.onerror = (error) => {
+  console.error('Erro na conexão SSE:', error);
+  // Implementar lógica de reconexão
+};
 ```
 
 ### Eventos Recebidos
 
 #### 1. Atualização de Status da Fila
-```javascript
-socket.on('queue-status-updated', (data) => {
-  console.log('Fila atualizada:', data);
-  // data: { totalWaiting, lastTicketCreated, estimatedWaitTime, timestamp }
-});
-```
+Recebido via SSE como evento `queue-updated`
 
 #### 2. Ticket Chamado
-```javascript
-socket.on('call-made', (data) => {
-  console.log('Ticket chamado:', data);
-  // data: { type: 'ticket-called', ticket: {...}, timestamp }
-});
-```
+Recebido via SSE como evento `ticket-called`
 
 #### 3. Atualização de Status do Ticket
-```javascript
-socket.on('ticket-status-updated', (data) => {
-  console.log('Status do ticket atualizado:', data);
-  // data: { type: 'status-changed', oldStatus, newStatus, ... }
-});
-```
+Recebido via SSE como evento `ticket-status-updated`
 
 #### 4. Atualização de Senha Atual
-```javascript
-socket.on('current-calling-token-updated', (data) => {
-  console.log('Senha atual atualizada:', data);
-  // data: { ticketId, oldToken, newToken, queueId, queueName, ... }
-});
-```
+Recebido via SSE como evento `current-calling-token-updated`
 
 ## 🔄 Fluxo Completo do Cliente
 
@@ -165,8 +155,8 @@ socket.on('current-calling-token-updated', (data) => {
 - Sistema gera um ticket com senha única
 - Cliente recebe confirmação com sua senha
 
-### 4. Conectar ao WebSocket
-- Cliente se conecta ao WebSocket
+### 4. Conectar ao SSE
+- Cliente se conecta ao SSE
 - Entra na sala da fila para receber atualizações
 - Entra na sala do seu ticket específico
 
@@ -191,11 +181,10 @@ socket.on('current-calling-token-updated', (data) => {
 <html>
 <head>
     <title>Fila - Consulta Médica</title>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body>
     <h1>Fila: Consulta Médica</h1>
-    
+
     <div id="status">
         <h2>Status da Fila</h2>
         <p>Senha Atual: <span id="currentToken">Aguardando...</span></p>
@@ -242,7 +231,7 @@ socket.on('current-calling-token-updated', (data) => {
             });
 
             const ticket = await response.json();
-            
+
             // Mostrar informações do ticket
             document.getElementById('myToken').textContent = ticket.myCallingToken;
             document.getElementById('myPosition').textContent = ticket.position;
@@ -263,9 +252,6 @@ socket.on('current-calling-token-updated', (data) => {
 ```bash
 # URL do frontend para gerar QR Codes
 FRONTEND_URL=https://fila.centroclinico.com
-
-# CORS para WebSocket
-WEBSOCKET_CORS_ORIGIN=https://fila.centroclinico.com
 ```
 
 ## 🔒 Segurança
@@ -273,7 +259,6 @@ WEBSOCKET_CORS_ORIGIN=https://fila.centroclinico.com
 - **Endpoints de consulta** são públicos (`@Public()`)
 - **Endpoints de entrada na fila** requerem autenticação JWT
 - **Endpoints de gerenciamento** requerem autenticação JWT + permissões de tenant
-- **WebSocket** não requer autenticação para clientes (apenas para operações sensíveis)
 - **Validação de dados** de entrada com DTOs
 - **Rate limiting** implementado para prevenir spam
 - **Tokens JWT** com expiração configurável
@@ -281,7 +266,6 @@ WEBSOCKET_CORS_ORIGIN=https://fila.centroclinico.com
 
 ## Monitoramento
 
-- Logs de conexão/desconexão WebSocket
 - Logs de criação de tickets
 - Logs de mudanças de status
 - Métricas de tempo de espera

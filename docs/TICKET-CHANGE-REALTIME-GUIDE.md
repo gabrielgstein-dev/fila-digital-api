@@ -93,7 +93,6 @@ Accept: text/event-stream
 ```typescript
 class TicketChangeManager {
   private eventSource: EventSource | null = null;
-  private socket: Socket | null = null;
 
   constructor(private token: string) {}
 
@@ -148,7 +147,7 @@ class TicketChangeManager {
             'Authorization': `Bearer ${this.token}`,
           },
         });
-        
+
         if (response.ok) {
           const notifications = await response.json();
           notifications.forEach(notification => {
@@ -169,7 +168,7 @@ class TicketChangeManager {
           this.redirectToLogin();
         }
         break;
-      
+
       case 'session-invalidated':
         this.showNotification('Sua sessão foi invalidada', 'warning');
         this.redirectToLogin();
@@ -200,7 +199,6 @@ class TicketChangeManager {
 
   disconnect() {
     this.eventSource?.close();
-    this.socket?.disconnect();
   }
 }
 
@@ -255,10 +253,10 @@ export function useTicketChange() {
 
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      
+
       if (data.eventType === 'ticket-changed') {
         setState(prev => ({ ...prev, success: true }));
-        
+
         if (data.requiresReauth) {
           setTimeout(() => {
             logout();
@@ -331,7 +329,7 @@ export function TicketChangeForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       await changeTicket(tickets);
       setTickets({ currentTicket: '', newTicket: '', confirmTicket: '' });
@@ -419,7 +417,7 @@ export function TicketChangeForm() {
 1. **Comprimento mínimo**: 8 caracteres
 2. **Complexidade**: Deve conter:
    - Pelo menos 1 letra minúscula
-   - Pelo menos 1 letra maiúscula  
+   - Pelo menos 1 letra maiúscula
    - Pelo menos 1 número
    - Pelo menos 1 caractere especial (@$!%*?&)
 3. **Não pode ser igual ao ticket atual**
@@ -445,9 +443,6 @@ export function TicketChangeForm() {
 # JWT Configuration
 JWT_SECRET=sua_chave_secreta_jwt
 JWT_EXPIRES_IN=7d
-
-# WebSocket Configuration  
-WEBSOCKET_CORS_ORIGIN=http://localhost:3000
 
 # Rate Limiting
 THROTTLE_TTL=300000
@@ -523,7 +518,7 @@ npm run test:e2e -- --testNamePattern="Ticket Change"
 - ✅ Invalidação de sessões
 - ✅ Notificações em tempo real
 - ✅ Conexões SSE
-- ✅ WebSocket events
+- ✅ Eventos em tempo real
 
 ## 🚨 Considerações de Segurança
 

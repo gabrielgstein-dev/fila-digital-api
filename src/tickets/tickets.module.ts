@@ -1,22 +1,31 @@
-import { Module, forwardRef } from '@nestjs/common';
-import { EventsModule } from '../events/events.module';
+import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
+import { TicketEstimateService } from './helpers/ticket-estimate.service';
+import { TicketNotificationService } from './helpers/ticket-notification.service';
+import { TicketNumberService } from './helpers/ticket-number.service';
+import { TicketValidationService } from './helpers/ticket-validation.service';
 import { TicketCleanupService } from './ticket-cleanup.service';
-import { TicketsController } from './tickets.controller';
 import { TicketsPublicController } from './tickets-public.controller';
+import { TicketsController } from './tickets.controller';
 import { TicketsService } from './tickets.service';
 
 @Module({
   imports: [
-    EventsModule,
     PrismaModule,
-    forwardRef(() => TelegramModule),
+    TelegramModule,
     WhatsAppModule,
   ],
   controllers: [TicketsController, TicketsPublicController],
-  providers: [TicketsService, TicketCleanupService],
+  providers: [
+    TicketsService,
+    TicketCleanupService,
+    TicketEstimateService,
+    TicketValidationService,
+    TicketNumberService,
+    TicketNotificationService,
+  ],
   exports: [TicketsService, TicketCleanupService],
 })
 export class TicketsModule {}

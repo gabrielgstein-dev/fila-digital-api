@@ -1,8 +1,8 @@
 import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
+    ConflictException,
+    ForbiddenException,
+    Injectable,
+    NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { CreateTenantDto } from '../common/dto/create-tenant.dto';
@@ -17,7 +17,16 @@ export class TenantsService {
 
   async create(createTenantDto: CreateTenantDto): Promise<TenantResponseDto> {
     try {
-      // Validação manual para email duplicado do tenant
+      console.log('DEBUG: Iniciando criação de tenant com slug:', createTenantDto.slug);
+
+      const existingSlug = await this.prisma.tenant.findUnique({
+        where: { slug: createTenantDto.slug },
+      });
+
+      if (existingSlug) {
+        throw new ConflictException('Já existe um tenant com este slug');
+      }
+
       if (createTenantDto.email) {
         const existingTenant = await this.prisma.tenant.findFirst({
           where: { email: createTenantDto.email },
@@ -233,12 +242,23 @@ export class TenantsService {
     updateTenantDto: UpdateTenantDto,
   ): Promise<TenantResponseDto> {
     try {
-      // Validação manual para email duplicado
+      if (updateTenantDto.slug) {
+        const existingSlug = await this.prisma.tenant.findFirst({
+          where: {
+            slug: updateTenantDto.slug,
+            id: { not: id },
+          },
+        });
+        if (existingSlug) {
+          throw new ConflictException('Já existe um tenant com este slug');
+        }
+      }
+
       if (updateTenantDto.email) {
         const existingTenant = await this.prisma.tenant.findFirst({
           where: {
             email: updateTenantDto.email,
-            id: { not: id }, // Excluir o tenant atual da verificação
+            id: { not: id },
           },
         });
         if (existingTenant) {

@@ -38,7 +38,7 @@ TicketNotificationConsumer.handleTicketCalled()
   ↓
 EventsGateway.emitClientTicketCalled()
   ↓
-WebSocket → Cliente
+SSE → Cliente
 ```
 
 ### 3. Fluxo de Notificações ATUAL (sem RabbitMQ)
@@ -60,15 +60,13 @@ IgniterService → SSE Stream
 Cliente via Server-Sent Events
 ```
 
-#### Caminho 2: WebSocket Direto
+#### Caminho 2: SSE Direto
 ```
 QueuesService.callNext()
   ↓
-EventsService.emitTicketCalled()
+EventsService.emitCallMade()
   ↓
-EventsGateway.emitCallMade()
-  ↓
-WebSocket → Cliente
+SSE → Cliente
 ```
 
 #### Caminho 3: Notificações Externas
@@ -107,7 +105,6 @@ WebSocket → Cliente
 
 ✅ **Sistema de notificações funcionando via**:
 - PostgreSQL LISTEN/NOTIFY (principal)
-- WebSocket direto (EventsGateway)
 - SSE via Igniter
 - Telegram
 - WhatsApp

@@ -20,9 +20,7 @@ services:
       - fila-e2e-network
 
   api-tests:
-    build:
-      context: .
-      dockerfile: Dockerfile.qa
+    image: node:24-slim
     container_name: fila-api-e2e-tests
     working_dir: /app
     depends_on:
@@ -36,7 +34,6 @@ services:
       JWT_SECRET: test-secret-key
       JWT_EXPIRES_IN: '7d'
       CORS_ORIGIN: http://localhost:3000
-      WEBSOCKET_CORS_ORIGIN: http://localhost:3000
       FRONTEND_URL: http://localhost:3000
       LOG_LEVEL: debug,log,warn,error
       THROTTLE_TTL: 60
@@ -47,14 +44,22 @@ services:
       CI: 'true'
       DOCKER_ENV: 'true' # 🛡️ Segurança: Permite executar testes e2e apenas no Docker
     volumes:
-      - ./:/app
+      - ./:/app:cached
+      - node_modules_e2e:/app/node_modules
+      - pnpm_store_e2e:/app/.pnpm-store
     networks:
       - fila-e2e-network
     command: >-
-      sh -c "npm install -g pnpm && pnpm install --frozen-lockfile=false && npx prisma generate && npx prisma migrate deploy && pnpm test:e2e"
+      sh -c "npm install -g pnpm &&
+             pnpm install --no-frozen-lockfile &&
+             npx prisma generate &&
+             npx prisma migrate deploy &&
+             pnpm test:e2e"
 
 volumes:
   postgres_e2e_data:
+  node_modules_e2e:
+  pnpm_store_e2e:
 
 networks:
   fila-e2e-network:

@@ -1,9 +1,8 @@
 import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  NotFoundException,
-  forwardRef,
+    BadRequestException,
+    Injectable,
+    Logger,
+    NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TicketStatus } from '@prisma/client';
@@ -13,18 +12,33 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { WhatsAppQueueService } from '../whatsapp/whatsapp-queue.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { QueueCallService } from './helpers/queue-call.service';
+import { QueueStatsService } from './helpers/queue-stats.service';
+import { QueueValidationService } from './helpers/queue-validation.service';
+import { QueueRepository } from './repositories/queue.repository';
 
 @Injectable()
 export class QueuesService {
+  private readonly logger = new Logger(QueuesService.name);
+
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
     private whatsappService: WhatsAppService,
     private whatsappQueueService: WhatsAppQueueService,
-    @Inject(forwardRef(() => TelegramService))
     private telegramService: TelegramService,
+    private queueRepository: QueueRepository,
+    private validationService: QueueValidationService,
+    private statsService: QueueStatsService,
+    private callService: QueueCallService,
   ) {}
 
+  /**
+   * Cria uma nova fila para o tenant
+   * @param tenantId - ID do tenant
+   * @param createQueueDto - Dados da fila (nome, tipo, capacidade)
+   * @returns Fila criada com tickets aguardando
+   */
   async create(tenantId: string, createQueueDto: CreateQueueDto) {
     const { isActive, ...queueData } = createQueueDto;
 
@@ -118,140 +132,63 @@ export class QueuesService {
     });
   }
 
-  async callNext(tenantId: string, queueId: string) {
-    const queue = await this.findOne(tenantId, queueId);
+  /**
+   * Chama o próximo ticket na fila (respeitando prioridade + FIFO)
+   * @param tenantId - ID do tenant
+   * @param queueId - ID da fila
+   * @param agentId - ID do agente chamando (opcional)
+   * @returns Ticket chamado com status CALLED
+   * @throws NotFoundException se não houver tickets na fila
+   * @throws BadRequestException se a fila estiver inativa
+   */
+  async callNext(tenantId: string, queueId: string, agentId?: string) {
+    this.logger.log(`Chamando próximo ticket na fila: ${queueId}`);
 
-    const nextTicket = await this.prisma.ticket.findFirst({
-      where: {
-        queueId: queue.id,
-        status: TicketStatus.WAITING,
-      },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
-    });
-
-    if (!nextTicket) {
-      throw new NotFoundException('Nenhum ticket disponível na fila');
-    }
-
-    if (!nextTicket.id || typeof nextTicket.id !== 'string') {
-      console.error('❌ Ticket encontrado mas sem ID válido:', {
-        ticket: nextTicket,
-        id: nextTicket.id,
-        idType: typeof nextTicket.id,
-      });
-      throw new BadRequestException('Ticket encontrado mas sem ID válido');
-    }
-
-    const ticketId = String(nextTicket.id).trim();
-
-    if (!ticketId || ticketId.length === 0) {
-      throw new BadRequestException('ID do ticket está vazio');
-    }
-
-    console.log(
-      `🎫 [CALL NEXT] Chamando próximo ticket: ${ticketId} (${nextTicket.myCallingToken})`,
+    const queue = await this.validationService.validateQueueForCall(
+      queueId,
+      tenantId,
     );
 
-    console.log(`🔍 [CALL NEXT] Verificando ticket no banco: ${ticketId}`);
+    const updatedTicket = await this.callService.callNextTicket(queueId, agentId);
 
-    const ticketExists = await this.prisma.ticket.findUnique({
-      where: { id: ticketId },
-      select: { id: true, status: true, queueId: true },
-    });
+    await this.notifyTicketCalled(updatedTicket);
+    await this.notifyWaitingTicketsUpTo3Positions(queue.id);
 
-    console.log(`🔍 [CALL NEXT] Ticket encontrado:`, ticketExists);
-
-    if (!ticketExists) {
-      console.error(
-        `❌ [CALL NEXT] Ticket ${ticketId} não encontrado no banco`,
-      );
-      throw new NotFoundException(
-        `Ticket ${ticketId} não encontrado no banco de dados`,
-      );
-    }
-
-    if (ticketExists.status !== TicketStatus.WAITING) {
-      console.error(
-        `❌ [CALL NEXT] Ticket ${ticketId} não está WAITING. Status atual: ${ticketExists.status}`,
-      );
-      throw new BadRequestException(
-        `Ticket ${ticketId} não está com status WAITING (status atual: ${ticketExists.status})`,
-      );
-    }
-
-    console.log(
-      `✅ [CALL NEXT] Ticket válido. Atualizando status para CALLED...`,
+    this.logger.log(
+      `Fila ${queueId} atualizada: senha atual = ${updatedTicket.myCallingToken}`,
     );
 
-    try {
-      const updateResult = await this.prisma.ticket.update({
-        where: { id: ticketId },
-        data: {
-          status: TicketStatus.CALLED,
-          calledAt: new Date(),
-        },
-      });
+    return updatedTicket;
+  }
 
-      console.log(
-        `✅ [CALL NEXT] Ticket atualizado com sucesso:`,
-        updateResult.id,
-        updateResult.status,
-      );
-    } catch (updateError) {
-      console.error(`❌ [CALL NEXT] Erro ao atualizar ticket:`, updateError);
-      throw updateError;
-    }
+  private async notifyTicketCalled(ticket: any): Promise<void> {
+    const telegramChatId = ticket.telegramChatId;
 
-    const updatedTicket = await this.prisma.ticket.findUnique({
-      where: { id: ticketId },
-      include: {
-        queue: true,
-        user: true,
-      },
-    });
-
-    if (!updatedTicket) {
-      throw new NotFoundException(
-        `Ticket ${ticketId} não encontrado após atualização`,
-      );
-    }
-
-    console.log(
-      `✅ Fila ${queueId} atualizada: senha atual = ${updatedTicket.myCallingToken}`,
-    );
-
-    // 📱 ENVIAR NOTIFICAÇÃO TELEGRAM
-    const telegramChatId = (updatedTicket as { telegramChatId?: string })
-      .telegramChatId;
     if (telegramChatId && this.telegramService.isConfigured()) {
       try {
         await this.telegramService.sendTicketNotification(
           telegramChatId,
-          updatedTicket.myCallingToken,
-          updatedTicket.queue.name,
+          ticket.myCallingToken,
+          ticket.queue.name,
         );
       } catch (error) {
-        console.error('Erro ao enviar notificação Telegram:', error);
+        this.logger.error(
+          `Erro ao enviar notificação Telegram: ${error instanceof Error ? error.message : String(error)}`,
+          error instanceof Error ? error.stack : undefined,
+        );
       }
     }
 
-    // 🔄 PostgreSQL Trigger já disparou notificação SSE via LISTEN/NOTIFY
-    console.log(
-      `📡 Notificação SSE disparada automaticamente via trigger para fila ${queueId}`,
+    this.logger.debug(
+      `Notificação SSE disparada automaticamente via trigger para fila ${ticket.queueId}`,
     );
-
-    await this.notifyWaitingTicketsUpTo3Positions(queue.id);
-
-    return updatedTicket;
   }
 
   private async notifyWaitingTicketsUpTo3Positions(queueId: string) {
     try {
       const queue = await this.prisma.queue.findUnique({
         where: { id: queueId },
-        include: {
-          tenant: true,
-        },
+        include: { tenant: true },
       });
 
       if (!queue) {
@@ -278,51 +215,11 @@ export class QueuesService {
         return;
       }
 
-      let avgServiceTimeReal: number | null = null;
+      const avgServiceTime =
+        (await this.queueRepository.getAverageServiceTimeRecent(queueId)) ||
+        queue.avgServiceTime ||
+        300;
 
-      try {
-        const threeHoursAgo = new Date();
-        threeHoursAgo.setHours(threeHoursAgo.getHours() - 3);
-
-        const result = await this.prisma.$queryRaw<
-          Array<{ avg_recent_service_time: number | null }>
-        >`
-          SELECT
-            AVG((metadata->>'serviceTime')::numeric)::integer as avg_recent_service_time
-          FROM queue_ticket_history
-          WHERE "queueId" = ${queueId}
-            AND action = 'COMPLETED'
-            AND "calledAt" >= ${threeHoursAgo}
-            AND metadata->>'serviceTime' IS NOT NULL
-            AND (metadata->>'serviceTime')::numeric > 0
-        `;
-
-        avgServiceTimeReal = result[0]?.avg_recent_service_time;
-
-        if (!avgServiceTimeReal || avgServiceTimeReal <= 0) {
-          const sevenDaysAgo = new Date();
-          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-          const result7Days = await this.prisma.$queryRaw<
-            Array<{ avg_service_time: number | null }>
-          >`
-            SELECT
-              AVG((metadata->>'serviceTime')::numeric)::integer as avg_service_time
-            FROM queue_ticket_history
-            WHERE "queueId" = ${queueId}
-              AND action = 'COMPLETED'
-              AND "calledAt" >= ${sevenDaysAgo}
-              AND metadata->>'serviceTime' IS NOT NULL
-              AND (metadata->>'serviceTime')::numeric > 0
-          `;
-
-          avgServiceTimeReal = result7Days[0]?.avg_service_time;
-        }
-      } catch (error) {
-        console.error('Erro ao calcular tempo médio real:', error);
-      }
-
-      const avgServiceTime = avgServiceTimeReal || queue.avgServiceTime || 300;
       const baseUrl =
         this.configService.get<string>('FRONTEND_URL') ||
         'http://localhost:3000';
@@ -334,49 +231,41 @@ export class QueuesService {
         const estimatedMinutes = Math.ceil(estimatedTimeSeconds / 60);
 
         if (ticket.clientPhone && this.whatsappService.isConfigured()) {
-          try {
-            this.whatsappQueueService
-              .enqueuePositionUpdate(
-                ticket.clientPhone,
-                ticket.queue.tenant.name,
-                ticket.myCallingToken,
-                position,
-                estimatedMinutes,
-                ticket.id,
-                baseUrl,
-                ticket.clientName || undefined,
-                ticket.queue.name,
-              )
-              .then((result) => {
-                if (result.success) {
-                  console.log(
-                    `✅ Atualização de posição WhatsApp enviada para ${ticket.clientPhone} - Senha: ${ticket.myCallingToken}`,
-                  );
-                } else {
-                  console.error(
-                    `❌ Erro ao enviar atualização de posição WhatsApp para ${ticket.clientPhone}:`,
-                    result.error,
-                  );
-                }
-              })
-              .catch((error) => {
-                console.error(
-                  `❌ Erro ao enviar atualização de posição WhatsApp para ticket ${ticket.id}:`,
-                  error,
+          this.whatsappQueueService
+            .enqueuePositionUpdate(
+              ticket.clientPhone,
+              ticket.queue.tenant.name,
+              ticket.myCallingToken,
+              position,
+              estimatedMinutes,
+              ticket.id,
+              baseUrl,
+              ticket.clientName || undefined,
+              ticket.queue.name,
+            )
+            .then((result) => {
+              if (result.success) {
+                this.logger.log(
+                  `Atualização de posição WhatsApp enviada para ${ticket.clientPhone} - Senha: ${ticket.myCallingToken}`,
                 );
-              });
-          } catch (error) {
-            console.error(
-              `❌ Erro ao adicionar atualização de posição à fila WhatsApp para ticket ${ticket.id}:`,
-              error,
-            );
-          }
+              } else {
+                this.logger.error(
+                  `Erro ao enviar atualização de posição WhatsApp para ${ticket.clientPhone}: ${result.error}`,
+                );
+              }
+            })
+            .catch((error) => {
+              this.logger.error(
+                `Erro ao enviar atualização de posição WhatsApp para ticket ${ticket.id}: ${error instanceof Error ? error.message : String(error)}`,
+                error instanceof Error ? error.stack : undefined,
+              );
+            });
         }
       }
     } catch (error) {
-      console.error(
-        'Erro ao notificar tickets aguardando sobre atualização de posição:',
-        error,
+      this.logger.error(
+        `Erro ao notificar tickets aguardando: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
       );
     }
   }
@@ -411,7 +300,6 @@ export class QueuesService {
   }
 
   async getAllTickets(tenantId: string) {
-    // Buscar todas as filas do tenant com seus tickets
     const queues = await this.prisma.queue.findMany({
       where: {
         tenantId,
@@ -429,7 +317,6 @@ export class QueuesService {
       },
     });
 
-    // Buscar estatísticas do dia
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -448,7 +335,6 @@ export class QueuesService {
       },
     });
 
-    // Calcular estatísticas consolidadas
     const totalWaiting = queues.reduce(
       (sum, queue) =>
         sum +
@@ -467,7 +353,6 @@ export class QueuesService {
       todayStats.find((s) => s.status === TicketStatus.COMPLETED)?._count
         .status || 0;
 
-    // Calcular tempo médio de espera
     const allWaitingTickets = queues.flatMap((queue) =>
       queue.tickets.filter((t) => t.status === TicketStatus.WAITING),
     );
@@ -480,42 +365,41 @@ export class QueuesService {
           ) / allWaitingTickets.length
         : 0;
 
-    // Buscar dados completos de cada fila incluindo ticket atual e anterior
     const queuesWithCurrentNumber = await Promise.all(
       queues.map(async (queue) => {
-        const currentTicket = await this.prisma.ticket.findFirst({
-          where: {
-            queueId: queue.id,
-            status: TicketStatus.CALLED,
-          },
-          orderBy: { calledAt: 'desc' },
-          select: { myCallingToken: true },
-        });
-
-        const previousTicket = await this.prisma.ticket.findFirst({
-          where: {
-            queueId: queue.id,
-            status: { in: [TicketStatus.COMPLETED, TicketStatus.NO_SHOW] },
-          },
-          orderBy: { calledAt: 'desc' },
-          select: { myCallingToken: true },
-        });
-
-        const lastCalledTicket = await this.prisma.ticket.findFirst({
-          where: {
-            queueId: queue.id,
-            calledAt: { not: null },
-          },
-          orderBy: { calledAt: 'desc' },
-          select: { calledAt: true },
-        });
-
-        const totalProcessed = await this.prisma.ticket.count({
-          where: {
-            queueId: queue.id,
-            status: { in: [TicketStatus.COMPLETED, TicketStatus.NO_SHOW] },
-          },
-        });
+        const [currentTicket, previousTicket, lastCalledTicket, totalProcessed] =
+          await Promise.all([
+            this.prisma.ticket.findFirst({
+              where: {
+                queueId: queue.id,
+                status: TicketStatus.CALLED,
+              },
+              orderBy: { calledAt: 'desc' },
+              select: { myCallingToken: true },
+            }),
+            this.prisma.ticket.findFirst({
+              where: {
+                queueId: queue.id,
+                status: { in: [TicketStatus.COMPLETED, TicketStatus.NO_SHOW] },
+              },
+              orderBy: { calledAt: 'desc' },
+              select: { myCallingToken: true },
+            }),
+            this.prisma.ticket.findFirst({
+              where: {
+                queueId: queue.id,
+                calledAt: { not: null },
+              },
+              orderBy: { calledAt: 'desc' },
+              select: { calledAt: true },
+            }),
+            this.prisma.ticket.count({
+              where: {
+                queueId: queue.id,
+                status: { in: [TicketStatus.COMPLETED, TicketStatus.NO_SHOW] },
+              },
+            }),
+          ]);
 
         return {
           id: queue.id,
@@ -568,7 +452,6 @@ export class QueuesService {
     const waitingTickets = allTickets
       .filter((t) => t.status === TicketStatus.WAITING)
       .sort((a, b) => {
-        // Ordenar por prioridade (desc) e depois por data de criação (asc)
         if (a.priority !== b.priority) {
           return b.priority - a.priority;
         }
@@ -653,21 +536,22 @@ export class QueuesService {
     };
   }
 
+  /**
+   * Retorna estatísticas detalhadas da fila
+   * @param tenantId - ID do tenant
+   * @param queueId - ID da fila
+   * @returns Estatísticas completas (aguardando, completados, tempo médio, etc)
+   * @throws NotFoundException se a fila não existir
+   */
   async getQueueDetailedStats(tenantId: string, queueId: string) {
-    const queue = await this.prisma.queue.findFirst({
-      where: { id: queueId, tenantId },
-      include: {
-        tenant: true,
-        tickets: {
-          orderBy: { createdAt: 'asc' },
-        },
-        _count: {
-          select: { tickets: true },
-        },
-      },
-    });
+    await this.validationService.validateQueueAccess(queueId, tenantId);
 
-    if (!queue) {
+    const detailedStats = await this.statsService.getDetailedStats(
+      queueId,
+      tenantId,
+    );
+
+    if (!detailedStats) {
       throw new NotFoundException('Fila não encontrada');
     }
 
@@ -676,9 +560,71 @@ export class QueuesService {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    let dailyStats = null;
+    const [dailyStatsFromDb, waitingTickets, calledTickets, nextTicket] =
+      await Promise.all([
+        this.getDailyStatsFromDb(queueId),
+        this.prisma.ticket.findMany({
+          where: { queueId, status: TicketStatus.WAITING },
+          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+        }),
+        this.prisma.ticket.count({
+          where: { queueId, status: TicketStatus.CALLED },
+        }),
+        this.prisma.ticket.findFirst({
+          where: { queueId, status: TicketStatus.WAITING },
+          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+        }),
+      ]);
+
+    const nextEstimatedTime = nextTicket
+      ? await this.queueRepository.getAverageServiceTimeRecent(queueId)
+      : 0;
+
+    const queueStatus = this.determineQueueStatus(
+      detailedStats.queue,
+      waitingTickets.length,
+      calledTickets,
+    );
+
+    return {
+      queueInfo: {
+        id: detailedStats.queue.id,
+        name: detailedStats.queue.name,
+        capacity: detailedStats.queue.capacity,
+        avgServiceTime: detailedStats.stats.avgServiceTimeRecent,
+        status: queueStatus,
+      },
+      currentStats: {
+        waitingCount: waitingTickets.length,
+        calledCount: calledTickets,
+        completedToday: detailedStats.stats.completedToday,
+        nextEstimatedTime,
+        nextEstimatedTimeMinutes: Math.round(nextEstimatedTime / 60),
+        completionRate:
+          detailedStats.stats.dailyStats.total_tickets > 0
+            ? Math.round(
+                (detailedStats.stats.dailyStats.completed_tickets /
+                  detailedStats.stats.dailyStats.total_tickets) *
+                  100,
+              )
+            : 0,
+      },
+      performance: {
+        avgWaitTime: detailedStats.stats.dailyStats.avg_wait_time || 0,
+        avgWaitTimeMinutes: Math.round(
+          (detailedStats.stats.dailyStats.avg_wait_time || 0) / 60,
+        ),
+        totalProcessedToday:
+          detailedStats.stats.dailyStats.completed_tickets || 0,
+        abandonmentRate: 0,
+      },
+      lastUpdated: new Date(),
+    };
+  }
+
+  private async getDailyStatsFromDb(queueId: string) {
     try {
-      const statsResult = await this.prisma.$queryRaw<
+      const result = await this.prisma.$queryRaw<
         Array<{
           totalProcessed: number;
           totalCompleted: number;
@@ -698,236 +644,14 @@ export class QueuesService {
           AND "date" = CURRENT_DATE
         LIMIT 1
       `;
-      if (statsResult.length > 0) {
-        dailyStats = statsResult[0];
-      }
+      return result.length > 0 ? result[0] : null;
     } catch (error) {
-      console.error('Erro ao buscar daily stats:', error);
-    }
-
-    const [
-      waitingTickets,
-      calledTickets,
-      completedTodayTickets,
-      totalTodayTickets,
-      noShowTodayTickets,
-      nextTicket,
-    ] = await Promise.all([
-      // Tickets aguardando
-      this.prisma.ticket.findMany({
-        where: { queueId: queue.id, status: TicketStatus.WAITING },
-        orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
-      }),
-      // Tickets chamados
-      this.prisma.ticket.count({
-        where: { queueId: queue.id, status: TicketStatus.CALLED },
-      }),
-      // Tickets completados hoje
-      this.prisma.ticket.findMany({
-        where: {
-          queueId: queue.id,
-          status: TicketStatus.COMPLETED,
-          completedAt: { gte: today, lt: tomorrow },
-        },
-        select: { completedAt: true, calledAt: true },
-      }),
-      // Total de tickets criados hoje
-      this.prisma.ticket.count({
-        where: {
-          queueId: queue.id,
-          createdAt: { gte: today, lt: tomorrow },
-        },
-      }),
-      // Tickets no-show hoje
-      this.prisma.ticket.count({
-        where: {
-          queueId: queue.id,
-          status: TicketStatus.NO_SHOW,
-          completedAt: { gte: today, lt: tomorrow },
-        },
-      }),
-      // Próximo ticket na fila
-      this.prisma.ticket.findFirst({
-        where: { queueId: queue.id, status: TicketStatus.WAITING },
-        orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
-      }),
-    ]);
-
-    // Calcular próxima estimativa usando tempo médio real dos últimos atendimentos
-    const nextEstimatedTime = nextTicket
-      ? await this.calculateNextEstimatedTime(
-          queue.id,
-          waitingTickets.length,
-          (queue as any).avgServiceTime || 300,
-        )
-      : 0;
-
-    // Calcular taxa de conclusão (completados vs total criados hoje)
-    const completionRate =
-      totalTodayTickets > 0
-        ? Math.round((completedTodayTickets.length / totalTodayTickets) * 100)
-        : 0;
-
-    // Usar daily stats se disponível, senão calcular em tempo real
-    let avgWaitTime = dailyStats?.avgWaitTime || 0;
-    let totalProcessedToday = dailyStats?.totalProcessed || 0;
-
-    if (!dailyStats) {
-      // Calcular tempo médio de espera usando queue_ticket_history
-      try {
-        const waitTimeResult = await this.prisma.$queryRaw<
-          Array<{ avg_wait_time: number | null }>
-        >`
-          SELECT
-            AVG((metadata->>'serviceTime')::numeric)::integer as avg_wait_time
-          FROM queue_ticket_history
-          WHERE "queueId" = ${queue.id}
-            AND action = 'COMPLETED'
-            AND DATE("calledAt") = CURRENT_DATE
-            AND metadata->>'serviceTime' IS NOT NULL
-            AND (metadata->>'serviceTime')::numeric > 0
-        `;
-        avgWaitTime = waitTimeResult[0]?.avg_wait_time || 0;
-      } catch (error) {
-        console.error('Erro ao calcular espera média do histórico:', error);
-        avgWaitTime = this.calculateAverageWaitTime(completedTodayTickets);
-      }
-
-      // Calcular total processado hoje usando queue_ticket_history
-      try {
-        const processedResult = await this.prisma.$queryRaw<
-          Array<{ total_processed: bigint }>
-        >`
-          SELECT COUNT(*)::bigint as total_processed
-          FROM queue_ticket_history
-          WHERE "queueId" = ${queue.id}
-            AND action IN ('COMPLETED', 'NO_SHOW')
-            AND DATE("calledAt") = CURRENT_DATE
-        `;
-        totalProcessedToday = Number(processedResult[0]?.total_processed || 0);
-      } catch (error) {
-        console.error('Erro ao calcular total processado do histórico:', error);
-        totalProcessedToday = completedTodayTickets.length + noShowTodayTickets;
-      }
-    }
-
-    // Garantir que totalProcessedToday seja calculado corretamente
-    // Sempre usar a mesma fonte de dados (tabela tickets) para garantir consistência
-    // totalProcessedToday = COMPLETED + NO_SHOW (apenas tickets realmente processados)
-    const totalProcessedFromTickets =
-      completedTodayTickets.length + noShowTodayTickets;
-
-    // Se dailyStats existe e tem valor, usar ele (mais performático)
-    // Mas se for diferente do cálculo direto, usar o cálculo direto (mais confiável)
-    if (
-      totalProcessedToday === 0 ||
-      Math.abs(totalProcessedToday - totalProcessedFromTickets) > 0
-    ) {
-      totalProcessedToday = totalProcessedFromTickets;
-    }
-
-    // Calcular taxa de abandono apenas se houver tickets processados
-    // Taxa de abandono = (NO_SHOW / (COMPLETED + NO_SHOW)) * 100
-    // Só calcular se houver pelo menos 1 ticket processado
-    let abandonmentRate = 0;
-    if (totalProcessedToday > 0) {
-      abandonmentRate = Math.round(
-        (noShowTodayTickets / totalProcessedToday) * 100,
+      this.logger.error(
+        `Erro ao buscar daily stats: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
       );
+      return null;
     }
-
-    // Determinar status da fila
-    const queueStatus = this.determineQueueStatus(
-      queue,
-      waitingTickets.length,
-      calledTickets,
-    );
-
-    return {
-      queueInfo: {
-        id: queue.id,
-        name: queue.name,
-        description: queue.description || 'Sem descrição',
-        capacity: queue.capacity,
-        toleranceMinutes: (queue as any).toleranceMinutes,
-        avgServiceTime: (queue as any).avgServiceTime,
-        status: queueStatus,
-      },
-      currentStats: {
-        waitingCount: waitingTickets.length,
-        calledCount: calledTickets,
-        completedToday:
-          dailyStats?.totalCompleted || completedTodayTickets.length,
-        nextEstimatedTime,
-        nextEstimatedTimeMinutes: Math.round(nextEstimatedTime / 60),
-        completionRate,
-      },
-      performance: {
-        avgWaitTime,
-        avgWaitTimeMinutes: Math.round(avgWaitTime / 60),
-        totalProcessedToday,
-        abandonmentRate,
-      },
-      lastUpdated: new Date(),
-    };
-  }
-
-  private async calculateNextEstimatedTime(
-    queueId: string,
-    position: number,
-    avgServiceTime: number,
-  ): Promise<number> {
-    if (position === 0) return 0;
-
-    try {
-      const threeHoursAgo = new Date();
-      threeHoursAgo.setHours(threeHoursAgo.getHours() - 3);
-
-      const result = await this.prisma.$queryRaw<
-        Array<{ avg_recent_service_time: number | null }>
-      >`
-        SELECT
-          AVG((metadata->>'serviceTime')::numeric)::integer as avg_recent_service_time
-        FROM queue_ticket_history
-        WHERE "queueId" = ${queueId}
-          AND action = 'COMPLETED'
-          AND "calledAt" >= ${threeHoursAgo}
-          AND metadata->>'serviceTime' IS NOT NULL
-          AND (metadata->>'serviceTime')::numeric > 0
-      `;
-
-      const avgRecentServiceTime = result[0]?.avg_recent_service_time;
-
-      if (avgRecentServiceTime && avgRecentServiceTime > 0) {
-        return position * avgRecentServiceTime;
-      }
-    } catch (error) {
-      console.error('Erro ao calcular tempo médio recente:', error);
-    }
-
-    return position * (avgServiceTime || 300);
-  }
-
-  private calculateAverageWaitTime(
-    completedTickets: Array<{
-      completedAt: Date | null;
-      calledAt: Date | null;
-    }>,
-  ): number {
-    if (completedTickets.length === 0) return 0;
-
-    const validTickets = completedTickets.filter(
-      (ticket) => ticket.calledAt && ticket.completedAt,
-    );
-
-    if (validTickets.length === 0) return 0;
-
-    const totalWaitTime = validTickets.reduce((sum, ticket) => {
-      if (!ticket.calledAt || !ticket.completedAt) return sum;
-      return sum + (ticket.completedAt.getTime() - ticket.calledAt.getTime());
-    }, 0);
-
-    return Math.round(totalWaitTime / validTickets.length / 1000);
   }
 
   private determineQueueStatus(
@@ -936,13 +660,7 @@ export class QueuesService {
     calledCount: number,
   ): string {
     if (!queue.isActive) return 'inativa';
-
-    // Considerar pausada se não há movimento há muito tempo
-    // Aqui podemos implementar lógica mais sofisticada se necessário
-    if (waitingCount === 0 && calledCount === 0) {
-      return 'pausada';
-    }
-
+    if (waitingCount === 0 && calledCount === 0) return 'pausada';
     return 'ativa';
   }
 }

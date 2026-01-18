@@ -22,7 +22,7 @@ O **Sistema de Fila Digital** é uma solução completa e moderna para gerenciam
 ### **✅ 3. Experiência do Cliente**
 - **Interface mobile responsiva**
 - **QR Codes** para facilitar acesso
-- **Notificações em tempo real** via WebSocket
+- **Notificações em tempo real** via API REST
 - **Estimativa de tempo** de espera
 - **Acompanhamento visual** da posição na fila
 
@@ -43,19 +43,19 @@ O **Sistema de Fila Digital** é uma solução completa e moderna para gerenciam
 
 ## 🏗️ **Arquitetura da Solução**
 
-### **Backend (API REST + WebSocket)**
+### **Backend (API REST + SSE)**
 ```
-NestJS + TypeScript + Prisma + PostgreSQL + Socket.io
+NestJS + TypeScript + Prisma + PostgreSQL + Server-Sent Events
 ✅ JWT Authentication
-✅ Multi-tenant Architecture  
-✅ Real-time WebSocket
+✅ Multi-tenant Architecture
+✅ Real-time SSE
 ✅ Rate Limiting & Security
 ✅ Swagger Documentation
 ```
 
 ### **Frontend (PWA/Web App)**
 ```
-HTML5 + JavaScript + Socket.io Client
+HTML5 + JavaScript + EventSource API
 ✅ Responsive Design
 ✅ Real-time Updates
 ✅ QR Code Integration
@@ -79,13 +79,13 @@ PostgreSQL com schema multi-tenant
 
 ### **🏥 Caso 1: Centro Clínico São Paulo**
 **Problema**: 4 especialidades, filas desorganizadas, pacientes perdidos
-**Solução**: 
+**Solução**:
 - 4 filas digitais (Endocrinologia, Pediatria, Raio-X, Oftalmologia)
 - QR Code em cada consultório
 - Painel TV na sala de espera
 - App para acompanhar a fila
 
-**Resultado**: 
+**Resultado**:
 - ⏰ Redução de 60% no tempo de espera percebido
 - 📱 95% dos pacientes usam o app
 - 😊 Satisfação do cliente aumentou 40%
@@ -242,14 +242,14 @@ Semana 4: Rollout completo + Suporte
 
 ## ✅ **Conclusão**
 
-O **Sistema de Fila Digital** não é apenas uma solução tecnológica, é uma **transformação completa** na experiência de atendimento ao cliente. 
+O **Sistema de Fila Digital** não é apenas uma solução tecnológica, é uma **transformação completa** na experiência de atendimento ao cliente.
 
 **Resultados comprovados**, **implementação rápida** e **retorno garantido** fazem desta a escolha ideal para empresas que querem **modernizar** seu atendimento e **surpreender** seus clientes.
 
-### **🎯 Próximo Passo**: 
+### **🎯 Próximo Passo**:
 **Agende uma demonstração** e veja como podemos transformar sua operação em apenas 30 dias.
 
 ---
 
-**🚀 Pronto para revolucionar seu atendimento?**  
+**🚀 Pronto para revolucionar seu atendimento?**
 **Entre em contato e comece hoje mesmo!**

@@ -124,7 +124,7 @@ Tenant B → Filas B → Não vê dados de A
 ### **🎯 Cobertura Total**: 6 suítes de teste, 58 testes
 ```
 ✅ api-structure.e2e-spec.ts   - Estrutura da API
-✅ auth.e2e-spec.ts           - Autenticação  
+✅ auth.e2e-spec.ts           - Autenticação
 ✅ queues.e2e-spec.ts         - CRUD de filas
 ✅ tickets.e2e-spec.ts        - Gerenciamento de tickets
 ✅ app.e2e-spec.ts            - Aplicação geral
@@ -147,7 +147,7 @@ Tenant B → Filas B → Não vê dados de A
 - Adicionar middleware para verificar acesso por tenant
 
 ### **🟡 IMPORTANTE - Funcionalidades**
-- Testes de WebSocket (eventos em tempo real)
+- Testes de eventos em tempo real (SSE)
 - Testes de CallLogs (auditoria)
 - Testes de diferentes roles (ADMIN, MANAGER, ATTENDANT)
 

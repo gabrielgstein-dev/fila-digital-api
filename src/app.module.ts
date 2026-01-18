@@ -13,7 +13,6 @@ import { SanitizeInterceptor } from './common/interceptors/sanitize.interceptor'
 import { TenantFilterInterceptor } from './common/interceptors/tenant-filter.interceptor';
 import { CorporateUsersModule } from './corporate-users/corporate-users.module';
 import { DashboardModule } from './dashboard/dashboard.module';
-import { EventsModule } from './events/events.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { QueuesModule } from './queues/queues.module';
 import { TelegramModule } from './telegram/telegram.module';
@@ -49,7 +48,6 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
     AuthModule.forRoot(),
     QueuesModule,
     TicketsModule,
-    EventsModule,
     ClientsModule,
     AgentsModule,
     CorporateUsersModule,

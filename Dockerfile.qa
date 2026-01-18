@@ -2,7 +2,7 @@
 # ================================================
 
 # Stage 1: Builder - Instala dependências e faz o build
-FROM node:22-slim AS builder
+FROM node:24-slim AS builder
 
 # Instalar dependências do sistema necessárias para o build
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -50,7 +50,7 @@ RUN echo "🏗️ Buildando aplicação NestJS..." && \
 RUN pnpm prune --prod
 
 # Stage 2: Runtime - Imagem final otimizada para Cloud Run
-FROM node:22-slim
+FROM node:24-slim
 
 # Instalar apenas dependências essenciais para runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
