@@ -277,4 +277,85 @@ export class AgentsService {
       },
     });
   }
+
+  async updateStatus(id: string, status: string, currentAgentId: string) {
+    const currentAgent = await this.prisma.agent.findUnique({
+      where: { id: currentAgentId },
+    });
+
+    if (!currentAgent) {
+      throw new NotFoundException('Agente não encontrado');
+    }
+
+    const targetAgent = await this.prisma.agent.findUnique({
+      where: { id },
+    });
+
+    if (!targetAgent) {
+      throw new NotFoundException('Agente não encontrado');
+    }
+
+    if (targetAgent.tenantId !== currentAgent.tenantId) {
+      throw new ForbiddenException('Acesso negado a este agente');
+    }
+
+    if (!targetAgent.isActive) {
+      throw new ForbiddenException('Não é possível alterar status de agente inativo');
+    }
+
+    return this.prisma.agent.update({
+      where: { id },
+      data: { status },
+      include: {
+        tenant: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+      },
+    });
+  }
+
+  async getAgentStats(id: string, currentAgentId: string) {
+    const agent = await this.findOne(id, currentAgentId);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [totalCallsToday, currentTicket] = await Promise.all([
+      this.prisma.callLog.count({
+        where: {
+          agentId: id,
+          calledAt: {
+            gte: today,
+          },
+        },
+      }),
+      agent.currentTicketId
+        ? this.prisma.ticket.findUnique({
+            where: { id: agent.currentTicketId },
+            select: {
+              id: true,
+              myCallingToken: true,
+              clientName: true,
+              calledAt: true,
+            },
+          })
+        : null,
+    ]);
+
+    return {
+      agent: {
+        id: agent.id,
+        name: agent.name,
+        status: agent.status,
+      },
+      stats: {
+        totalCallsToday,
+        currentTicket,
+      },
+    };
+  }
 }

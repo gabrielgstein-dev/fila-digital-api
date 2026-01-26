@@ -404,4 +404,46 @@ export class AgentsController {
   ) {
     return this.agentsService.remove(id, currentAgentId);
   }
+
+  @Put(':id/status')
+  @ApiParam({
+    name: 'id',
+    description: 'ID do agente',
+  })
+  @ApiOperation({
+    summary: 'Atualizar status do agente',
+    description: 'Atualiza o status de disponibilidade do agente (AVAILABLE, BUSY, ON_BREAK, etc)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Status atualizado com sucesso',
+  })
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() updateStatusDto: { status: string },
+    @CurrentAgent('id') currentAgentId: string,
+  ) {
+    return this.agentsService.updateStatus(id, updateStatusDto.status, currentAgentId);
+  }
+
+  @Get(':id/stats')
+  @ApiParam({
+    name: 'id',
+    description: 'ID do agente',
+  })
+  @ApiOperation({
+    summary: 'Obter estatísticas do agente',
+    description: 'Retorna estatísticas de atendimento do agente incluindo ticket atual',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estatísticas do agente',
+  })
+  async getStats(
+    @Param('id') id: string,
+    @CurrentAgent('id') currentAgentId: string,
+  ) {
+    return this.agentsService.getAgentStats(id, currentAgentId);
+  }
+
 }

@@ -49,4 +49,12 @@ export class CreateTicketDto {
   @Min(1)
   @Max(10)
   priority?: number;
+
+  @ApiPropertyOptional({
+    description: 'ID do atendente preferido (opcional). Se informado, o cliente só será atendido por este atendente específico.',
+    example: 'agent_abc123',
+  })
+  @IsOptional()
+  @IsString()
+  preferredAgentId?: string;
 }
