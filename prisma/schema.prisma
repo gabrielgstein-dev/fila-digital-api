@@ -24,65 +24,71 @@ model Tenant {
 }
 
 model Queue {
-  id             String    @id @default(cuid())
-  name           String
-  description    String?
-  queueType      QueueType @default(GENERAL)
-  isActive       Boolean   @default(true)
-  capacity       Int       @default(100)
-  avgServiceTime Int       @default(300)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  tenantId       String
-  callLogs       CallLog[]
-  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  tickets        Ticket[]
+  id                    String    @id @default(cuid())
+  name                  String
+  description           String?
+  queueType             QueueType @default(GENERAL)
+  isActive              Boolean   @default(true)
+  capacity              Int       @default(100)
+  avgServiceTime        Int       @default(300)
+  isPaused              Boolean   @default(false)
+  pausedReason          String?
+  alternativeQueueId    String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  tenantId              String
+  callLogs              CallLog[]
+  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tickets               Ticket[]
 
   @@map("queues")
 }
 
 model Ticket {
-  id             String       @id @default(cuid())
-  priority       Int          @default(1)
-  status         TicketStatus @default(WAITING)
-  guestToken     String       @unique @default(uuid())
-  clientName     String?
-  clientCpf       String?
-  clientPhone    String?
-  clientEmail    String?
-  telegramChatId String?
-  estimatedTime  Int?
-  calledAt       DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  queueId        String
-  userId         String?
-  myCallingToken String
-  callLogs       CallLog[]
-  queue          Queue        @relation(fields: [queueId], references: [id], onDelete: Cascade)
-  user           User?        @relation("UserTickets", fields: [userId], references: [id])
+  id                String       @id @default(cuid())
+  priority          Int          @default(1)
+  status            TicketStatus @default(WAITING)
+  guestToken        String       @unique @default(uuid())
+  clientName        String?
+  clientCpf          String?
+  clientPhone       String?
+  clientEmail       String?
+  telegramChatId    String?
+  estimatedTime     Int?
+  calledAt          DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  queueId           String
+  userId            String?
+  myCallingToken    String
+  preferredAgentId  String?
+  callLogs          CallLog[]
+  queue             Queue        @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  user              User?        @relation("UserTickets", fields: [userId], references: [id])
 
   @@unique([queueId, myCallingToken])
   @@map("tickets")
 }
 
 model Agent {
-  id          String    @id @default(cuid())
-  email       String    @unique
-  name        String
-  password    String?
-  googleId    String?   @unique
-  role        AgentRole @default(OPERADOR)
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  tenantId    String
-  cpf         String    @unique
-  isDefault   Boolean   @default(false)
-  isProtected Boolean   @default(false)
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  callLogs    CallLog[]
+  id              String      @id @default(cuid())
+  email           String      @unique
+  name            String
+  password        String?
+  googleId        String?     @unique
+  role            AgentRole   @default(OPERADOR)
+  isActive        Boolean     @default(true)
+  status          AgentStatus @default(OFFLINE)
+  currentTicketId String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  tenantId        String
+  cpf             String      @unique
+  isDefault       Boolean     @default(false)
+  isProtected     Boolean     @default(false)
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  callLogs        CallLog[]
 
   @@map("agents")
 }
@@ -158,6 +164,14 @@ enum AgentRole {
   GERENTE
   GESTOR
   ADMINISTRADOR
+}
+
+enum AgentStatus {
+  OFFLINE
+  AVAILABLE
+  BUSY
+  ON_BREAK
+  AWAY
 }
 
 enum CallAction {
