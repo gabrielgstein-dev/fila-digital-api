@@ -77,20 +77,20 @@ PostgreSQL com schema multi-tenant
 
 ## 💼 **Casos de Uso Reais**
 
-### **🏥 Caso 1: Centro Clínico São Paulo**
-**Problema**: 4 especialidades, filas desorganizadas, pacientes perdidos
+### **🏥 Caso 1: Centro de Atendimento Multi-Serviço**
+**Problema**: 4 tipos de serviço, filas desorganizadas, clientes perdidos
 **Solução**:
-- 4 filas digitais (Endocrinologia, Pediatria, Raio-X, Oftalmologia)
-- QR Code em cada consultório
+- 4 filas digitais por tipo de serviço
+- QR Code em cada posto de atendimento
 - Painel TV na sala de espera
 - App para acompanhar a fila
 
 **Resultado**:
 - ⏰ Redução de 60% no tempo de espera percebido
-- 📱 95% dos pacientes usam o app
+- 📱 95% dos clientes usam o app
 - 😊 Satisfação do cliente aumentou 40%
 
-### **🧪 Caso 2: Laboratório Sabin**
+### **🏢 Caso 2: Escritório de Serviços**
 **Problema**: Fila única física, aglomerações, atendimento lento
 **Solução**:
 - Fila digital única otimizada
@@ -113,10 +113,10 @@ PostgreSQL com schema multi-tenant
 3. **Recebe senha digital** → Acompanha posição em tempo real
 4. **É notificado** → Vai para atendimento quando chamado
 
-### **👨‍⚕️ Para o Atendente:**
+### **👨‍💼 Para o Atendente:**
 1. **Faz login** → Escolhe sua fila de atendimento
-2. **Visualiza fila** → Vê próximos pacientes
-3. **Chama paciente** → Sistema notifica automaticamente
+2. **Visualiza fila** → Vê próximos clientes
+3. **Chama cliente** → Sistema notifica automaticamente
 4. **Gerencia atendimento** → Rechamar/Pular/Completar
 
 ### **👔 Para o Gestor:**
