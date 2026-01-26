@@ -13,6 +13,7 @@ import { TelegramService } from '../telegram/telegram.service';
 import { WhatsAppQueueService } from '../whatsapp/whatsapp-queue.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { QueueCallService } from './helpers/queue-call.service';
+import { QueuePoolService } from './helpers/queue-pool.service';
 import { QueueStatsService } from './helpers/queue-stats.service';
 import { QueueValidationService } from './helpers/queue-validation.service';
 import { QueueRepository } from './repositories/queue.repository';
@@ -31,6 +32,7 @@ export class QueuesService {
     private validationService: QueueValidationService,
     private statsService: QueueStatsService,
     private callService: QueueCallService,
+    private poolService: QueuePoolService,
   ) {}
 
   /**
@@ -662,5 +664,13 @@ export class QueuesService {
     if (!queue.isActive) return 'inativa';
     if (waitingCount === 0 && calledCount === 0) return 'pausada';
     return 'ativa';
+  }
+
+  async getPoolStatistics(tenantId: string) {
+    return this.poolService.getPoolStatistics(tenantId);
+  }
+
+  async offerNextTicketToAvailableAgent(tenantId: string) {
+    return this.poolService.offerNextTicketToAvailableAgent(tenantId);
   }
 }

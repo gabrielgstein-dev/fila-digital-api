@@ -618,4 +618,44 @@ export class QueuesController {
   ) {
     return this.queuesService.getQueueDetailedStats(tenantId, queueId);
   }
+
+  @Get('tenants/:tenantId/queues/pool/statistics')
+  @UseGuards(TenantAuthGuard)
+  @RequireTenant()
+  @ApiBearerAuth()
+  @ApiParam({
+    name: 'tenantId',
+    description: 'ID do tenant',
+  })
+  @ApiOperation({
+    summary: 'Obter estatísticas do pool centralizado',
+    description: 'Retorna estatísticas do pool de tickets por prioridade, incluindo disponibilidade de atendentes',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estatísticas do pool',
+  })
+  async getPoolStatistics(@Param('tenantId') tenantId: string) {
+    return this.queuesService.getPoolStatistics(tenantId);
+  }
+
+  @Post('tenants/:tenantId/queues/pool/offer-next')
+  @UseGuards(TenantAuthGuard)
+  @RequireTenant()
+  @ApiBearerAuth()
+  @ApiParam({
+    name: 'tenantId',
+    description: 'ID do tenant',
+  })
+  @ApiOperation({
+    summary: 'Ofertar próximo ticket ao atendente disponível',
+    description: 'Orquestra automaticamente o próximo ticket da fila de maior prioridade para o próximo atendente disponível',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Ticket ofertado com sucesso',
+  })
+  async offerNextTicket(@Param('tenantId') tenantId: string) {
+    return this.queuesService.offerNextTicketToAvailableAgent(tenantId);
+  }
 }

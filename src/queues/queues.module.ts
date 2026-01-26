@@ -3,6 +3,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { QueueCallService } from './helpers/queue-call.service';
+import { QueuePoolService } from './helpers/queue-pool.service';
 import { QueueStatsService } from './helpers/queue-stats.service';
 import { QueueValidationService } from './helpers/queue-validation.service';
 import { QueueDailyStatsService } from './queue-daily-stats.service';
@@ -27,7 +28,8 @@ import { QueueRepository } from './repositories/queue.repository';
     QueueValidationService,
     QueueStatsService,
     QueueCallService,
+    QueuePoolService,
   ],
-  exports: [QueuesService, QueueReportsService, QueueDailyStatsService],
+  exports: [QueuesService, QueueReportsService, QueueDailyStatsService, QueuePoolService],
 })
 export class QueuesModule {}

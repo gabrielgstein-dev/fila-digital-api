@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+import { QueuesModule } from '../queues/queues.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { TicketEstimateService } from './helpers/ticket-estimate.service';
@@ -16,6 +17,7 @@ import { TicketsService } from './tickets.service';
     PrismaModule,
     TelegramModule,
     WhatsAppModule,
+    QueuesModule,
   ],
   controllers: [TicketsController, TicketsPublicController],
   providers: [

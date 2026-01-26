@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { WhatsAppQueueService } from '../whatsapp/whatsapp-queue.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { QueuePoolService } from '../queues/helpers/queue-pool.service';
 import { TicketEstimateService } from './helpers/ticket-estimate.service';
 import { TicketNotificationService } from './helpers/ticket-notification.service';
 import { TicketNumberService } from './helpers/ticket-number.service';
@@ -32,6 +33,7 @@ export class TicketsService {
     private validationService: TicketValidationService,
     private numberService: TicketNumberService,
     private notificationService: TicketNotificationService,
+    private poolService: QueuePoolService,
   ) {}
 
   /**
@@ -78,6 +80,7 @@ export class TicketsService {
           clientEmail: createTicketDto.clientEmail ?? null,
           telegramChatId: createTicketDto.telegramChatId ?? null,
           priority: createTicketDto.priority ?? 1,
+          preferredAgentId: createTicketDto.preferredAgentId ?? null,
           queueId,
           estimatedTime,
           userId: userId || null,
@@ -102,6 +105,14 @@ export class TicketsService {
         position,
         estimatedMinutes,
       );
+
+      await this.poolService.checkAndPauseQueueIfAtCapacity(queueId);
+
+      setImmediate(() => {
+        this.poolService.offerNextTicketToAvailableAgent(queue.tenantId).catch(err => {
+          this.logger.error(`Erro ao ofertar ticket automaticamente: ${err.message}`);
+        });
+      });
 
       return ticket;
     } catch (error) {
@@ -384,6 +395,8 @@ export class TicketsService {
 
     if (agent && ticket.calledAt) {
       await this.createCallLog(ticket, agent.id, serviceTime);
+      
+      await this.poolService.releaseAgent(agent.id);
     }
 
     return updatedTicket;
