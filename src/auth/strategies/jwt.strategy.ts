@@ -72,6 +72,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         name: user.name,
         userType: 'client',
       };
+    } else if (payload.userType === 'superadmin') {
+      const superAdmin = await this.prisma.superAdmin.findUnique({
+        where: { id: payload.sub },
+      });
+
+      if (!superAdmin || !superAdmin.isActive) {
+        throw new UnauthorizedException();
+      }
+
+      return {
+        id: superAdmin.id,
+        email: superAdmin.email,
+        name: superAdmin.name,
+        userType: 'superadmin',
+      };
     }
 
     throw new UnauthorizedException('Tipo de usuário inválido');

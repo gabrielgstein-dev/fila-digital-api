@@ -328,4 +328,46 @@ export class AuthController {
       body.user,
     );
   }
+
+  @Post('superadmin/login')
+  @UseGuards(AuthThrottleGuard)
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login de super administrador',
+    description:
+      'Autentica um super administrador (dono do Agiliza Filas) usando email e senha. Retorna um JWT token com userType superadmin. Limite: 3 tentativas por minuto.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email', 'password'],
+      properties: {
+        email: { type: 'string', example: 'admin@agilizafilas.com' },
+        password: { type: 'string', example: '********' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Login realizado com sucesso.',
+    schema: {
+      type: 'object',
+      example: {
+        access_token: 'eyJhbGciOiJIUzI1NiIs...',
+        user: {
+          id: 'clxxx',
+          email: 'admin@agilizafilas.com',
+          name: 'Super Admin',
+          isActive: true,
+        },
+        userType: 'superadmin',
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Credenciais inválidas.' })
+  @ApiResponse({ status: 429, description: 'Muitas tentativas de login.' })
+  async superAdminLogin(@Body() body: { email: string; password: string }) {
+    return this.authService.superAdminLogin(body.email, body.password);
+  }
 }

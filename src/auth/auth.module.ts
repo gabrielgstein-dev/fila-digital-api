@@ -11,6 +11,7 @@ import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { TenantAuthGuard } from './guards/tenant-auth.guard';
 import { AuthThrottleGuard } from './guards/auth-throttle.guard';
+import { SuperAdminAuthGuard } from './guards/super-admin-auth.guard';
 
 @Module({})
 export class AuthModule {
@@ -42,6 +43,7 @@ export class AuthModule {
         JwtAuthGuard,
         TenantAuthGuard,
         AuthThrottleGuard,
+        SuperAdminAuthGuard,
       ],
       exports: [
         AuthService,
@@ -50,6 +52,7 @@ export class AuthModule {
         JwtAuthGuard,
         TenantAuthGuard,
         AuthThrottleGuard,
+        SuperAdminAuthGuard,
       ],
     };
   }

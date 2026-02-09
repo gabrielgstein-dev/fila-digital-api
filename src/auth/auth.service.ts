@@ -426,6 +426,43 @@ export class AuthService {
     };
   }
 
+  async validateSuperAdmin(email: string, password: string) {
+    const superAdmin = await this.prisma.superAdmin.findUnique({
+      where: { email },
+    });
+
+    if (!superAdmin || !superAdmin.isActive) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, superAdmin.password);
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    return superAdmin;
+  }
+
+  async superAdminLogin(email: string, password: string) {
+    const superAdmin = await this.validateSuperAdmin(email, password);
+
+    const payload = {
+      sub: superAdmin.id,
+      email: superAdmin.email,
+      userType: 'superadmin',
+    };
+
+    const { password: _, ...cleanSuperAdmin } = superAdmin as any;
+    const formattedSuperAdmin = this.formatDates(cleanSuperAdmin);
+
+    return {
+      access_token: this.jwtService.sign(payload),
+      user: formattedSuperAdmin,
+      userType: 'superadmin',
+    };
+  }
+
   async deleteAgent(agentId: string) {
     const agent = await this.prisma.agent.findUnique({
       where: { id: agentId },

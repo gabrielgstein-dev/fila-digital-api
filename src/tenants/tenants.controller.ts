@@ -21,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { TenantAuthGuard } from '../auth/guards/tenant-auth.guard';
+import { SuperAdminAuthGuard } from '../auth/guards/super-admin-auth.guard';
 import { CreateTenantDto } from '../common/dto/create-tenant.dto';
 import { TenantResponseDto } from '../common/dto/tenant-response.dto';
 import { UpdateTenantDto } from '../common/dto/update-tenant.dto';
@@ -66,12 +67,12 @@ export class TenantsController {
   }
 
   @Get()
-  @UseGuards(TenantAuthGuard)
+  @UseGuards(SuperAdminAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Listar todos os tenants',
     description:
-      'Retorna lista de todos os tenants do sistema (apenas para administradores)',
+      'Retorna lista de todos os tenants do sistema (apenas super administradores)',
   })
   @ApiResponse({
     status: 200,
@@ -80,14 +81,9 @@ export class TenantsController {
   })
   @ApiResponse({
     status: 403,
-    description: 'Acesso negado - apenas administradores',
+    description: 'Acesso restrito aos administradores do sistema',
   })
-  async findAll(
-    @CurrentAgent('role') role: string,
-  ): Promise<TenantResponseDto[]> {
-    if (role !== 'ADMINISTRADOR') {
-      throw new Error('Apenas administradores podem listar todos os tenants');
-    }
+  async findAll(): Promise<TenantResponseDto[]> {
     return this.tenantsService.findAll();
   }
 
@@ -195,11 +191,11 @@ export class TenantsController {
   }
 
   @Put(':id/toggle-active')
-  @UseGuards(TenantAuthGuard)
+  @UseGuards(SuperAdminAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Alternar status ativo do tenant',
-    description: 'Ativa ou desativa um tenant (apenas se pertencer ao tenant)',
+    description: 'Ativa ou desativa um tenant (apenas super administradores)',
   })
   @ApiParam({ name: 'id', description: 'ID do tenant' })
   @ApiResponse({
@@ -220,11 +216,11 @@ export class TenantsController {
   }
 
   @Delete(':id')
-  @UseGuards(TenantAuthGuard)
+  @UseGuards(SuperAdminAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Remover tenant',
-    description: 'Remove um tenant do sistema (apenas se pertencer ao tenant)',
+    description: 'Remove um tenant do sistema (apenas super administradores)',
   })
   @ApiParam({ name: 'id', description: 'ID do tenant' })
   @ApiResponse({
