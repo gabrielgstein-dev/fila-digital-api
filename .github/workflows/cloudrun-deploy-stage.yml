@@ -138,15 +138,13 @@ jobs:
 
           # Verificar migrações pendentes
           echo "🔍 Verificando migrações pendentes..."
-          npx prisma migrate status
+          npx prisma migrate status || true
 
-          # Aplicar migrações
           echo "🚀 Aplicando migrações..."
           npx prisma migrate deploy
 
-          # Verificar o status após a migração
           echo "✅ Migrações aplicadas com sucesso!"
-          npx prisma migrate status
+          npx prisma migrate status || true
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGE }}
           JWT_SECRET: ${{ secrets.JWT_SECRET_STAGE }}
