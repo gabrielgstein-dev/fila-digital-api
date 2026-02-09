@@ -16,6 +16,9 @@ describe('TicketEstimateService', () => {
             ticket: {
               findMany: jest.fn(),
             },
+            callLog: {
+              aggregate: jest.fn(),
+            },
             $queryRaw: jest.fn(),
           },
         },
@@ -33,9 +36,9 @@ describe('TicketEstimateService', () => {
     });
 
     it('deve calcular tempo estimado com base no tempo médio', async () => {
-      jest.spyOn(prisma, '$queryRaw').mockResolvedValue([
-        { avg_recent_service_time: 300 },
-      ]);
+      jest.spyOn(prisma.callLog, 'aggregate').mockResolvedValue({
+        _avg: { serviceTime: 300 },
+      } as any);
 
       const result = await service.calculateEstimatedTime('queue-1', 3);
       expect(result).toBe(900);
@@ -43,9 +46,9 @@ describe('TicketEstimateService', () => {
 
     it('deve usar fallback quando não há dados recentes', async () => {
       jest
-        .spyOn(prisma, '$queryRaw')
-        .mockResolvedValueOnce([{ avg_recent_service_time: null }])
-        .mockResolvedValueOnce([{ avg_service_time: 240 }]);
+        .spyOn(prisma.callLog, 'aggregate')
+        .mockResolvedValueOnce({ _avg: { serviceTime: 0 } } as any)
+        .mockResolvedValueOnce({ _avg: { serviceTime: 240 } } as any);
 
       const result = await service.calculateEstimatedTime('queue-1', 2);
       expect(result).toBe(480);
@@ -76,9 +79,9 @@ describe('TicketEstimateService', () => {
 
   describe('getAverageServiceTime', () => {
     it('deve retornar tempo médio recente quando disponível', async () => {
-      jest.spyOn(prisma, '$queryRaw').mockResolvedValue([
-        { avg_recent_service_time: 350 },
-      ]);
+      jest.spyOn(prisma.callLog, 'aggregate').mockResolvedValue({
+        _avg: { serviceTime: 350 },
+      } as any);
 
       const result = await service.getAverageServiceTime('queue-1');
       expect(result).toBe(350);
@@ -86,9 +89,9 @@ describe('TicketEstimateService', () => {
 
     it('deve usar valor padrão quando não há dados', async () => {
       jest
-        .spyOn(prisma, '$queryRaw')
-        .mockResolvedValueOnce([{ avg_recent_service_time: null }])
-        .mockResolvedValueOnce([{ avg_service_time: null }]);
+        .spyOn(prisma.callLog, 'aggregate')
+        .mockResolvedValueOnce({ _avg: { serviceTime: 0 } } as any)
+        .mockResolvedValueOnce({ _avg: { serviceTime: 0 } } as any);
 
       const result = await service.getAverageServiceTime('queue-1');
       expect(result).toBe(300);

@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AgentStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
@@ -305,7 +306,7 @@ export class AgentsService {
 
     return this.prisma.agent.update({
       where: { id },
-      data: { status },
+      data: { status: status as AgentStatus },
       include: {
         tenant: {
           select: {
