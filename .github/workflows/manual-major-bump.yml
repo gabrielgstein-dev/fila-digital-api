@@ -1,0 +1,88 @@
+name: Manual Major Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to bump major version on'
+        required: true
+        type: choice
+        options:
+          - staging
+          - main
+
+jobs:
+  major-bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Calculate major bump
+        id: bump
+        run: |
+          BRANCH="${{ github.event.inputs.target_branch }}"
+
+          if [[ "$BRANCH" == "staging" ]]; then
+            LAST_TAG=$(git tag --list '*-staging' --sort=-v:refname | head -n 1)
+            SUFFIX="-staging"
+          else
+            LAST_TAG=$(git tag --list --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+            SUFFIX=""
+          fi
+
+          if [[ -z "$LAST_TAG" ]]; then
+            LAST_TAG="0.0.0"
+          fi
+
+          CURRENT_VERSION="${LAST_TAG%-staging}"
+          MAJOR=$(echo "$CURRENT_VERSION" | cut -d. -f1)
+
+          NEW_MAJOR=$((MAJOR + 1))
+          NEW_VERSION="${NEW_MAJOR}.0.0"
+          NEW_TAG="${NEW_VERSION}${SUFFIX}"
+
+          echo "current=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+          echo "🚀 MAJOR BUMP: $CURRENT_VERSION → $NEW_VERSION"
+
+      - name: Update package.json and create tag
+        run: |
+          BRANCH="${{ steps.bump.outputs.branch }}"
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+          NEW_TAG="${{ steps.bump.outputs.new_tag }}"
+
+          if [[ "$BRANCH" == "staging" ]]; then
+            PKG_VERSION="${NEW_VERSION}-staging"
+          else
+            PKG_VERSION="${NEW_VERSION}"
+          fi
+
+          node -e "
+            const pkg = require('./package.json');
+            pkg.version = '${PKG_VERSION}';
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          git add package.json
+          git commit -m "chore(release): ${NEW_TAG} [skip ci]"
+          git tag -a "$NEW_TAG" -m "Release ${NEW_TAG} (major bump)"
+          git push origin "$BRANCH"
+          git push origin "$NEW_TAG"
+
+          echo "✅ Major bump: Tag $NEW_TAG created and pushed"

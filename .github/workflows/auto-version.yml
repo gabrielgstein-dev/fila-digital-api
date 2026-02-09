@@ -1,0 +1,183 @@
+name: Auto Version
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+
+jobs:
+  version:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine version bump
+        id: bump
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+          if [[ "$BRANCH" == "staging" ]]; then
+            LAST_TAG=$(git tag --list '*-staging' --sort=-v:refname | head -n 1)
+            SUFFIX="-staging"
+          else
+            LAST_TAG=$(git tag --list --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+            SUFFIX=""
+          fi
+
+          if [[ -z "$LAST_TAG" ]]; then
+            LAST_TAG="0.0.0"
+            RANGE="HEAD"
+          else
+            RANGE="${LAST_TAG}..HEAD"
+          fi
+
+          CURRENT_VERSION="${LAST_TAG%-staging}"
+          echo "current=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+
+          MAJOR=$(echo "$CURRENT_VERSION" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT_VERSION" | cut -d. -f3)
+
+          COMMITS=$(git log "$RANGE" --pretty=format:"%s" 2>/dev/null || echo "")
+
+          if [[ -z "$COMMITS" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No new commits since last tag"
+            exit 0
+          fi
+
+          BUMP_TYPE="patch"
+          while IFS= read -r msg; do
+            if echo "$msg" | grep -qiE '^feat(\(.+\))?:'; then
+              BUMP_TYPE="minor"
+            fi
+          done <<< "$COMMITS"
+
+          case "$BUMP_TYPE" in
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          NEW_TAG="${NEW_VERSION}${SUFFIX}"
+
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "bump_type=$BUMP_TYPE" >> "$GITHUB_OUTPUT"
+
+          echo "📦 $CURRENT_VERSION → $NEW_VERSION ($BUMP_TYPE)"
+
+      - name: Generate changelog
+        if: steps.bump.outputs.skip != 'true'
+        id: changelog
+        run: |
+          LAST_TAG="${{ steps.bump.outputs.last_tag }}"
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+
+          if [[ "$LAST_TAG" == "0.0.0" ]]; then
+            RANGE="HEAD"
+          else
+            RANGE="${LAST_TAG}..HEAD"
+          fi
+
+          FEATURES=""
+          FIXES=""
+          OTHERS=""
+
+          while IFS= read -r msg; do
+            if echo "$msg" | grep -qiE '^feat(\(.+\))?:'; then
+              CLEAN=$(echo "$msg" | sed 's/^feat\([^)]*\)\?: //')
+              FEATURES="${FEATURES}- ${CLEAN}\n"
+            elif echo "$msg" | grep -qiE '^fix(\(.+\))?:'; then
+              CLEAN=$(echo "$msg" | sed 's/^fix\([^)]*\)\?: //')
+              FIXES="${FIXES}- ${CLEAN}\n"
+            elif echo "$msg" | grep -qiE '^\(chore\|refactor\|perf\|docs\|style\|test\|ci\|build\)'; then
+              CLEAN=$(echo "$msg" | sed 's/^[a-z]*\([^)]*\)\?: //')
+              OTHERS="${OTHERS}- ${CLEAN}\n"
+            fi
+          done <<< "$(git log "$RANGE" --pretty=format:"%s" 2>/dev/null)"
+
+          BODY="## ${NEW_VERSION} ($(date +%Y-%m-%d))\n\n"
+
+          if [[ -n "$FEATURES" ]]; then
+            BODY="${BODY}### Features\n${FEATURES}\n"
+          fi
+          if [[ -n "$FIXES" ]]; then
+            BODY="${BODY}### Bug Fixes\n${FIXES}\n"
+          fi
+          if [[ -n "$OTHERS" ]]; then
+            BODY="${BODY}### Other Changes\n${OTHERS}\n"
+          fi
+
+          echo "$BODY"
+          {
+            echo "notes<<EOF"
+            echo -e "$BODY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update package.json and create tag
+        if: steps.bump.outputs.skip != 'true'
+        run: |
+          BRANCH="${{ steps.bump.outputs.branch }}"
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+          NEW_TAG="${{ steps.bump.outputs.new_tag }}"
+
+          if [[ "$BRANCH" == "staging" ]]; then
+            PKG_VERSION="${NEW_VERSION}-staging"
+          else
+            PKG_VERSION="${NEW_VERSION}"
+          fi
+
+          node -e "
+            const pkg = require('./package.json');
+            pkg.version = '${PKG_VERSION}';
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          git add package.json
+          git commit -m "chore(release): ${NEW_TAG} [skip ci]"
+          git tag -a "$NEW_TAG" -m "Release ${NEW_TAG}"
+          git push origin "$BRANCH"
+          git push origin "$NEW_TAG"
+
+          echo "✅ Tag $NEW_TAG created and pushed"
+
+      - name: Create GitHub Release
+        if: steps.bump.outputs.skip != 'true' && steps.bump.outputs.branch == 'main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = '${{ steps.bump.outputs.new_tag }}';
+            const notes = `${{ steps.changelog.outputs.notes }}`;
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `Release ${tag}`,
+              body: notes,
+              draft: false,
+              prerelease: false,
+            });

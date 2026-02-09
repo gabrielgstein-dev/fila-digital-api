@@ -3,7 +3,7 @@ name: Deploy Backend to Cloud Run (Staging)
 on:
   push:
     tags:
-      - '*-stage'
+      - '*-staging'
   workflow_dispatch:
     inputs:
       tag:
@@ -31,7 +31,7 @@ jobs:
             TAG_NAME=${GITHUB_REF#refs/tags/}
             echo "Tag detectada: $TAG_NAME"
 
-            if [[ "$TAG_NAME" == *"-stage" ]]; then
+            if [[ "$TAG_NAME" == *"-staging" ]]; then
               echo "should_deploy=true" >> $GITHUB_OUTPUT
               echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
               echo "✅ Deploy será executado para versão: $TAG_NAME"
