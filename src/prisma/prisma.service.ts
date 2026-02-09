@@ -1,8 +1,8 @@
 import {
-    Injectable,
-    Logger,
-    OnModuleDestroy,
-    OnModuleInit,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
@@ -22,11 +22,15 @@ export class PrismaService
       throw new Error('DATABASE_URL não está configurada');
     }
 
+    const isLocalDb =
+      databaseUrl.includes('localhost') ||
+      databaseUrl.includes('127.0.0.1') ||
+      databaseUrl.includes('postgres-e2e') ||
+      process.env.NODE_ENV === 'test';
+
     const pool = new Pool({
       connectionString: databaseUrl,
-      ssl: {
-        rejectUnauthorized: false
-      }
+      ...(isLocalDb ? {} : { ssl: { rejectUnauthorized: false } }),
     });
     const adapter = new PrismaPg(pool);
 
