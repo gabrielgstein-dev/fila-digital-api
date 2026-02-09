@@ -139,3 +139,4 @@ dist
 .tmp/
 .temp/
 .pnpm-store
+test_output.txt
