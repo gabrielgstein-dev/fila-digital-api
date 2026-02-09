@@ -142,25 +142,19 @@ describe('Tenants (e2e)', () => {
         slug: 'empresa-b',
       });
 
-      // Criar agente em um dos tenants para autenticação
-      const agent = await testHelper.createAgent(tenant1.id, {
-        role: 'ADMINISTRADOR',
-      });
-      const token = await testHelper.loginAgent(agent.cpf, 'senha123');
+      const token = await testHelper.createSuperAdminAuthToken();
 
       const response = await request(testHelper.app.getHttpServer())
         .get('/api/v1/tenants')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      // Filtrar apenas os tenants criados neste teste
       const createdTenants = response.body.filter(
         (t: any) => t.id === tenant1.id || t.id === tenant2.id,
       );
 
       expect(createdTenants).toHaveLength(2);
 
-      // Verificar que os tenants criados estão na lista
       const tenant1InResponse = createdTenants.find(
         (t: any) => t.id === tenant1.id,
       );
@@ -175,27 +169,31 @@ describe('Tenants (e2e)', () => {
     });
 
     it('deve retornar lista vazia quando não há tenants', async () => {
-      // Limpar banco antes deste teste específico
       await testHelper.beforeEach();
 
-      // Criar um tenant para manter o agente
-      const tempTenant = await testHelper.createTenant();
-      const agent = await testHelper.createAgent(tempTenant.id, {
-        role: 'ADMINISTRADOR',
-      });
-      const token = await testHelper.loginAgent(agent.cpf, 'senha123');
+      const token = await testHelper.createSuperAdminAuthToken();
 
-      // Remover apenas os outros tenants, mantendo o tenant do agente
-      await testHelper.prisma.tenant.deleteMany({
-        where: { id: { not: tempTenant.id } },
-      });
+      await testHelper.prisma.tenant.deleteMany();
 
       const response = await request(testHelper.app.getHttpServer())
         .get('/api/v1/tenants')
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      expect(response.body).toHaveLength(1); // Deve retornar apenas o tenant do agente
+      expect(response.body).toHaveLength(0);
+    });
+
+    it('deve retornar 403 para agente comum tentando listar tenants', async () => {
+      const tenant = await testHelper.createTenant();
+      const agent = await testHelper.createAgent(tenant.id, {
+        role: 'ADMINISTRADOR',
+      });
+      const token = await testHelper.loginAgent(agent.cpf, 'senha123');
+
+      await request(testHelper.app.getHttpServer())
+        .get('/api/v1/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
     });
   });
 
@@ -325,12 +323,7 @@ describe('Tenants (e2e)', () => {
   describe('PUT /api/v1/tenants/:id/toggle-active', () => {
     it('deve alternar status ativo do tenant', async () => {
       const tenant = await testHelper.createTenant();
-
-      // Criar agente no mesmo tenant
-      const agent = await testHelper.createAgent(tenant.id, {
-        role: 'ADMINISTRADOR',
-      });
-      const token = await testHelper.loginAgent(agent.cpf, 'senha123');
+      const token = await testHelper.createSuperAdminAuthToken();
 
       const response1 = await request(testHelper.app.getHttpServer())
         .put(`/api/v1/tenants/${tenant.id}/toggle-active`)
@@ -346,17 +339,25 @@ describe('Tenants (e2e)', () => {
 
       expect(response2.body.isActive).toBe(true);
     });
+
+    it('deve retornar 403 para agente comum tentando toggle-active', async () => {
+      const tenant = await testHelper.createTenant();
+      const agent = await testHelper.createAgent(tenant.id, {
+        role: 'ADMINISTRADOR',
+      });
+      const token = await testHelper.loginAgent(agent.cpf, 'senha123');
+
+      await request(testHelper.app.getHttpServer())
+        .put(`/api/v1/tenants/${tenant.id}/toggle-active`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+    });
   });
 
   describe('DELETE /api/v1/tenants/:id', () => {
     it('deve remover tenant com sucesso', async () => {
       const tenant = await testHelper.createTenant();
-
-      // Criar agente no mesmo tenant
-      const agent = await testHelper.createAgent(tenant.id, {
-        role: 'ADMINISTRADOR',
-      });
-      const token = await testHelper.loginAgent(agent.cpf, 'senha123');
+      const token = await testHelper.createSuperAdminAuthToken();
 
       await request(testHelper.app.getHttpServer())
         .delete(`/api/v1/tenants/${tenant.id}`)
@@ -370,6 +371,15 @@ describe('Tenants (e2e)', () => {
     });
 
     it('deve retornar 404 para ID inexistente na remoção', async () => {
+      const token = await testHelper.createSuperAdminAuthToken();
+
+      await request(testHelper.app.getHttpServer())
+        .delete('/api/v1/tenants/tenant-inexistente')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+    });
+
+    it('deve retornar 403 para agente comum tentando deletar', async () => {
       const tenant = await testHelper.createTenant();
       const agent = await testHelper.createAgent(tenant.id, {
         role: 'ADMINISTRADOR',
@@ -377,9 +387,9 @@ describe('Tenants (e2e)', () => {
       const token = await testHelper.loginAgent(agent.cpf, 'senha123');
 
       await request(testHelper.app.getHttpServer())
-        .delete('/api/v1/tenants/tenant-inexistente')
+        .delete(`/api/v1/tenants/${tenant.id}`)
         .set('Authorization', `Bearer ${token}`)
-        .expect(404);
+        .expect(403);
     });
   });
 });

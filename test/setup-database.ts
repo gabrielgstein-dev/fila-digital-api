@@ -8,9 +8,11 @@ export async function cleanDatabase(prisma: PrismaService): Promise<void> {
     await prisma.queue.deleteMany();
     await prisma.counter.deleteMany();
     await prisma.agent.deleteMany();
+    await prisma.corporateUserPermission.deleteMany();
     await prisma.corporateUser.deleteMany();
     await prisma.user.deleteMany();
     await prisma.tenant.deleteMany();
+    await prisma.superAdmin.deleteMany();
 
     console.log('✅ Banco de dados limpo com sucesso usando deleteMany');
   } catch (error) {

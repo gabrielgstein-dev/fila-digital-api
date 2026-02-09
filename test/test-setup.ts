@@ -11,11 +11,15 @@ const currentVersion = process.versions.node;
 const majorVersion = parseInt(currentVersion.split('.')[0], 10);
 
 if (majorVersion < MIN_NODE_VERSION) {
-  console.error('❌ ═══════════════════════════════════════════════════════════════');
+  console.error(
+    '❌ ═══════════════════════════════════════════════════════════════',
+  );
   console.error(`❌ ERRO FATAL: Versão do Node.js incompatível!`);
   console.error(`❌ Versão atual: ${currentVersion}`);
   console.error(`❌ Versão mínima requerida: ${MIN_NODE_VERSION}.0.0`);
-  console.error('❌ ═══════════════════════════════════════════════════════════════');
+  console.error(
+    '❌ ═══════════════════════════════════════════════════════════════',
+  );
   process.exit(1);
 }
 
@@ -294,6 +298,36 @@ export class TestHelper {
       .expect(200);
 
     return response.body.access_token;
+  }
+
+  async createSuperAdmin(data?: Partial<any>) {
+    const bcrypt = await import('bcrypt');
+    const timestamp = Date.now();
+
+    const superAdmin = await this.prisma.superAdmin.create({
+      data: {
+        email: `superadmin-${timestamp}@agilizafilas.com`,
+        name: 'Super Admin Teste',
+        password: await bcrypt.hash('senha123', 10),
+        isActive: true,
+        ...data,
+      },
+    });
+    return superAdmin;
+  }
+
+  async loginSuperAdmin(email: string, password: string) {
+    const response = await this.getRequest()
+      .post('/api/v1/auth/superadmin/login')
+      .send({ email, password })
+      .expect(200);
+
+    return response.body.access_token;
+  }
+
+  async createSuperAdminAuthToken(): Promise<string> {
+    const superAdmin = await this.createSuperAdmin();
+    return this.loginSuperAdmin(superAdmin.email, 'senha123');
   }
 
   async createAuthToken(): Promise<string> {
