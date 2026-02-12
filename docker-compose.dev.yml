@@ -13,7 +13,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - '5432:5432'
+      - '5433:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -33,11 +33,12 @@ services:
     ports:
       - '3001:8080'
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: 8080
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/fila_digital?schema=public
-    env_file:
-      - .env
+      JWT_SECRET: local-dev-secret-key
+      JWT_EXPIRES_IN: 7d
+      CORS_ORIGIN: http://localhost:3002
     depends_on:
       postgres:
         condition: service_healthy
