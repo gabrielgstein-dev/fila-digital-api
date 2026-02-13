@@ -120,7 +120,7 @@ jobs:
             --region=$GCP_REGION \
             --project=$GCP_PROJECT_ID \
             --platform=managed \
-            --update-env-vars="VERSION=$VERSION,NODE_ENV=production,JWT_EXPIRES_IN=7d,DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }},JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }}" \
+            --update-env-vars="VERSION=$VERSION,NODE_ENV=production,JWT_EXPIRES_IN=7d,DATABASE_URL=${{ secrets.DATABASE_URL_STAGE }},JWT_SECRET=${{ secrets.JWT_SECRET_STAGE }},META_API_VERSION=${{ vars.META_API_VERSION_STAGE }},META_PHONE_NUMBER_ID=${{ secrets.META_PHONE_NUMBER_ID_STAGE }},META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN_STAGE }},META_WABA_ID=${{ secrets.META_WABA_ID_STAGE }},META_APP_ID=${{ secrets.META_APP_ID_STAGE }},WHATSAPP_TEMPLATE_LANGUAGE=${{ vars.WHATSAPP_TEMPLATE_LANGUAGE_STAGE }}" \
             --quiet
 
       - name: Run Prisma Migrations
